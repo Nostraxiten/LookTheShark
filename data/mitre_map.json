@@ -1,0 +1,49 @@
+{
+  "_comment": "Patron interno de LookingTheShark -> tecnica de MITRE ATT&CK. El campo 'patron' de cada Finding busca aqui su tecnica.",
+
+  "portscan":            {"id": "T1046",     "name": "Network Service Discovery", "tactic": "Discovery", "description": "Enumeracion de los servicios que ofrecen los equipos de una red para localizar cuales se pueden atacar."},
+  "network_sweep":       {"id": "T1018",     "name": "Remote System Discovery", "tactic": "Discovery", "description": "Busqueda de otros equipos de la red, normalmente probando el mismo puerto en muchas direcciones."},
+  "zone_transfer":       {"id": "T1590.002", "name": "Gather Victim Network Information: DNS", "tactic": "Reconnaissance", "description": "Obtencion de la estructura de nombres internos de la organizacion a traves del DNS."},
+  "banner_disclosure":   {"id": "T1592.002", "name": "Gather Victim Host Information: Software", "tactic": "Reconnaissance", "description": "Identificacion del software y su version a partir de la informacion que anuncian los propios servicios."},
+  "scanner_ua":          {"id": "T1595.002", "name": "Active Scanning: Vulnerability Scanning", "tactic": "Reconnaissance", "description": "Escaneo activo en busca de vulnerabilidades conocidas en los servicios expuestos."},
+
+  "beaconing":           {"id": "T1071",     "name": "Application Layer Protocol", "tactic": "Command and Control", "description": "Comunicacion con un servidor de control usando protocolos habituales para pasar desapercibida entre el trafico normal."},
+  "dns_tunneling":       {"id": "T1071.004", "name": "Application Layer Protocol: DNS", "tactic": "Command and Control", "description": "Uso del protocolo DNS como canal de datos, aprovechando que casi ninguna red lo bloquea."},
+  "dga":                 {"id": "T1568.002", "name": "Dynamic Resolution: Domain Generation Algorithms", "tactic": "Command and Control", "description": "Generacion automatica de nombres de dominio para que bloquear uno concreto no corte la comunicacion."},
+  "unusual_ja3":         {"id": "T1573",     "name": "Encrypted Channel", "tactic": "Command and Control", "description": "Canal cifrado propio de una herramienta de control remoto, identificable por su huella TLS."},
+  "tool_ja3":            {"id": "T1071.001", "name": "Application Layer Protocol: Web Protocols", "tactic": "Command and Control", "description": "Uso de HTTP/HTTPS por parte de herramientas automatizadas."},
+  "no_sni":              {"id": "T1573.002", "name": "Encrypted Channel: Asymmetric Cryptography", "tactic": "Command and Control", "description": "Conexion cifrada directa a una direccion IP sin indicar el dominio, evitando registros basados en nombres."},
+  "suspicious_port":     {"id": "T1571",     "name": "Non-Standard Port", "tactic": "Command and Control", "description": "Uso de puertos poco habituales, a menudo asociados a herramientas ofensivas conocidas."},
+
+  "arp_spoof":           {"id": "T1557.002", "name": "Adversary-in-the-Middle: ARP Cache Poisoning", "tactic": "Credential Access, Collection", "description": "Envenenamiento de la cache ARP para situarse en medio de la comunicacion entre dos equipos."},
+  "dhcp_rogue":          {"id": "T1557",     "name": "Adversary-in-the-Middle", "tactic": "Credential Access, Collection", "description": "Suplantacion de servicios de red para interceptar el trafico de los equipos."},
+  "mac_flooding":        {"id": "T1557",     "name": "Adversary-in-the-Middle", "tactic": "Credential Access, Collection", "description": "Saturacion de la tabla de direcciones del switch para forzarlo a difundir el trafico por todos los puertos."},
+
+  "cleartext_creds":     {"id": "T1040",     "name": "Network Sniffing", "tactic": "Credential Access, Discovery", "description": "Captura de credenciales que circulan por la red sin cifrar."},
+  "credential_exposure": {"id": "T1552.001", "name": "Unsecured Credentials: Credentials In Files", "tactic": "Credential Access", "description": "Claves, tokens o contrasenas accesibles en ficheros o mensajes sin proteger."},
+  "data_exposure":       {"id": "T1530",     "name": "Data from Information Repositories", "tactic": "Collection", "description": "Datos sensibles accesibles durante su transmision."},
+  "brute_force":         {"id": "T1110",     "name": "Brute Force", "tactic": "Credential Access", "description": "Intentos repetidos de autenticacion para adivinar credenciales validas."},
+  "password_reuse":      {"id": "T1078",     "name": "Valid Accounts", "tactic": "Initial Access, Persistence", "description": "Uso de credenciales legitimas reutilizadas en varios servicios."},
+
+  "exfiltration":        {"id": "T1048",     "name": "Exfiltration Over Alternative Protocol", "tactic": "Exfiltration", "description": "Salida de datos de la organizacion por un canal distinto del de mando y control."},
+
+  "file_transfer_mismatch": {"id": "T1036.008", "name": "Masquerading: Masquerade File Type", "tactic": "Defense Evasion", "description": "Fichero cuyo contenido real no corresponde con su extension ni con el tipo que anuncia, para que parezca inofensivo."},
+  "malware_download":    {"id": "T1105",     "name": "Ingress Tool Transfer", "tactic": "Command and Control", "description": "Descarga de herramientas o codigo adicional desde el exterior hacia un equipo comprometido."},
+  "webshell":            {"id": "T1505.003", "name": "Server Software Component: Web Shell", "tactic": "Persistence", "description": "Puerta trasera instalada en un servidor web que permite ejecutar comandos a traves de peticiones HTTP."},
+  "webdav_write":        {"id": "T1190",     "name": "Exploit Public-Facing Application", "tactic": "Initial Access", "description": "Aprovechamiento de metodos de escritura habilitados en un servidor web para subir contenido."},
+  "path_traversal":      {"id": "T1083",     "name": "File and Directory Discovery", "tactic": "Discovery", "description": "Peticiones construidas para salirse del directorio previsto y leer ficheros del sistema."},
+  "web_injection":       {"id": "T1190",     "name": "Exploit Public-Facing Application", "tactic": "Initial Access", "description": "Inyeccion de codigo o consultas en los parametros de una aplicacion web accesible desde fuera."},
+  "sensitive_file":      {"id": "T1552.001", "name": "Unsecured Credentials: Credentials In Files", "tactic": "Credential Access", "description": "Intento de acceder a ficheros de configuracion o credenciales publicados por error."},
+
+  "cleartext_protocol":  {"id": "T1040",     "name": "Network Sniffing", "tactic": "Credential Access, Discovery", "description": "Protocolos sin cifrar cuyo contenido puede leer cualquiera que tenga acceso al medio."},
+  "tls_downgrade":       {"id": "T1562.010", "name": "Impair Defenses: Downgrade Attack", "tactic": "Defense Evasion", "description": "Uso de versiones antiguas del protocolo con debilidades conocidas."},
+  "weak_cipher":         {"id": "T1600",     "name": "Weaken Encryption", "tactic": "Defense Evasion", "description": "Negociacion de algoritmos de cifrado debiles que reducen la proteccion real de la conexion."},
+  "suspicious_cert":     {"id": "T1587.003", "name": "Develop Capabilities: Digital Certificates", "tactic": "Resource Development", "description": "Certificados autofirmados o irregulares, tipicos de infraestructura montada por el atacante."},
+  "exposed_service":     {"id": "T1133",     "name": "External Remote Services", "tactic": "Initial Access, Persistence", "description": "Servicios internos accesibles desde el exterior, utilizados como via de entrada."},
+  "outdated_os":         {"id": "T1190",     "name": "Exploit Public-Facing Application", "tactic": "Initial Access", "description": "Sistemas sin soporte con vulnerabilidades publicas que no se van a corregir."},
+  "known_bad":           {"id": "T1071",     "name": "Application Layer Protocol", "tactic": "Command and Control", "description": "Comunicacion con infraestructura previamente catalogada como maliciosa."},
+  "suspicious_tld":      {"id": "T1583.001", "name": "Acquire Infrastructure: Domains", "tactic": "Resource Development", "description": "Dominios registrados en extensiones baratas o gratuitas, muy usadas en campanas maliciosas."},
+  "failed_connections":  {"id": "T1046",     "name": "Network Service Discovery", "tactic": "Discovery", "description": "Intentos de conexion repetidamente fallidos, tipicos de una busqueda a ciegas de servicios."},
+  "odd_hours":           {"id": "T1029",     "name": "Scheduled Transfer", "tactic": "Exfiltration", "description": "Actividad concentrada fuera del horario habitual, a menudo programada para pasar desapercibida."},
+  "os_conflict":         {"id": "T1036",     "name": "Masquerading", "tactic": "Defense Evasion", "description": "Indicios contradictorios sobre la identidad real de un equipo."}
+}

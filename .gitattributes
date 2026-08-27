@@ -1,0 +1,20 @@
+# Los scripts de Windows necesitan CRLF: con LF, cmd.exe rompe las etiquetas
+# y los goto del fichero por lotes.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# El resto siempre con LF, aunque se clone en Windows.
+*.py    text eol=lf
+*.sh    text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.j2    text eol=lf
+*.toml  text eol=lf
+*.txt   text eol=lf
+
+# Capturas y bases de datos binarias: nunca tocar.
+*.pcap    binary
+*.pcapng  binary
+*.mmdb    binary
+*.gz      binary

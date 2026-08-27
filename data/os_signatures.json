@@ -1,0 +1,40 @@
+{
+  "_comment": "Firmas de fingerprinting pasivo TCP (estilo p0f) para core/fingerprint.py. 'options' es el ORDEN de las opciones TCP del SYN tal y como lo genera core.fingerprint.parsear_opciones_tcp.",
+  "_campos": {
+    "ttl": "TTL inicial estimado (32/64/128/255)",
+    "window": "Tamano de ventana anunciado en el SYN",
+    "options": "Orden de las opciones TCP separadas por coma",
+    "os": "Nombre legible del sistema",
+    "family": "Familia para agrupar en el informe",
+    "confidence": "Confianza de esta firma concreta"
+  },
+  "tcp": [
+    {"ttl": 128, "window": 64240, "options": "mss,nop,ws,nop,nop,sack", "os": "Windows 10 / 11", "family": "Windows", "confidence": "alta"},
+    {"ttl": 128, "window": 65535, "options": "mss,nop,ws,nop,nop,sack", "os": "Windows 10 / 11", "family": "Windows", "confidence": "media"},
+    {"ttl": 128, "window": 8192, "options": "mss,nop,ws,nop,nop,sack", "os": "Windows 7 / 8 / Server 2012", "family": "Windows", "confidence": "alta"},
+    {"ttl": 128, "window": 65535, "options": "mss,nop,ws,nop,nop,ts,nop,nop,sack", "os": "Windows Server 2016+", "family": "Windows", "confidence": "media"},
+    {"ttl": 128, "window": 16384, "options": "mss,nop,nop,sack", "os": "Windows XP / Server 2003", "family": "Windows", "confidence": "media"},
+    {"ttl": 128, "window": 64240, "options": "mss,nop,ws,nop,nop,ts,nop,nop,sack", "os": "Windows 11 (timestamps activos)", "family": "Windows", "confidence": "media"},
+    {"ttl": 64, "window": 64240, "options": "mss,sack,ts,nop,ws", "os": "Linux (kernel 4.x / 5.x / 6.x)", "family": "Linux", "confidence": "alta"},
+    {"ttl": 64, "window": 65495, "options": "mss,sack,ts,nop,ws", "os": "Linux (loopback / MTU alta)", "family": "Linux", "confidence": "media"},
+    {"ttl": 64, "window": 29200, "options": "mss,sack,ts,nop,ws", "os": "Linux (kernel 3.x)", "family": "Linux", "confidence": "media"},
+    {"ttl": 64, "window": 14600, "options": "mss,sack,ts,nop,ws", "os": "Linux (kernel 2.6)", "family": "Linux", "confidence": "media"},
+    {"ttl": 64, "window": 5840, "options": "mss,sack,ts,nop,ws", "os": "Linux (kernel 2.4)", "family": "Linux", "confidence": "baja"},
+    {"ttl": 64, "window": 42340, "options": "mss,sack,ts,nop,ws", "os": "Linux en contenedor (Docker/k8s)", "family": "Linux", "confidence": "baja"},
+    {"ttl": 64, "window": 65535, "options": "mss,nop,ws,nop,nop,ts,sack,eol", "os": "macOS 11+ / iOS 14+", "family": "Apple", "confidence": "alta"},
+    {"ttl": 64, "window": 65535, "options": "mss,nop,ws,ts,sack,eol", "os": "macOS 10.x", "family": "Apple", "confidence": "media"},
+    {"ttl": 64, "window": 131072, "options": "mss,nop,ws,nop,nop,ts,sack,eol", "os": "macOS (ventana grande)", "family": "Apple", "confidence": "media"},
+    {"ttl": 64, "window": 65535, "options": "mss,sack,ts,nop,ws", "os": "Android 10+", "family": "Android", "confidence": "media"},
+    {"ttl": 64, "window": 65535, "options": "mss,nop,ws,sack,ts", "os": "FreeBSD 12+", "family": "BSD", "confidence": "media"},
+    {"ttl": 64, "window": 16384, "options": "mss,nop,nop,sack,nop,ws", "os": "OpenBSD", "family": "BSD", "confidence": "baja"},
+    {"ttl": 255, "window": 16384, "options": "mss,nop,ws", "os": "Solaris 10 / 11", "family": "Unix", "confidence": "baja"},
+    {"ttl": 255, "window": 4128, "options": "mss", "os": "Cisco IOS", "family": "Red", "confidence": "media"},
+    {"ttl": 255, "window": 8192, "options": "mss,nop,ws,sack,ts", "os": "Juniper JunOS", "family": "Red", "confidence": "baja"},
+    {"ttl": 64, "window": 5840, "options": "mss,nop,nop,sack", "os": "Dispositivo IoT / embebido (lwIP)", "family": "IoT", "confidence": "baja"},
+    {"ttl": 64, "window": 1024, "options": "mss", "os": "Nmap (escaneo SYN)", "family": "Escaner", "confidence": "alta"},
+    {"ttl": 64, "window": 1024, "options": "", "os": "masscan / escaner de alta velocidad", "family": "Escaner", "confidence": "alta"},
+    {"ttl": 64, "window": 65535, "options": "", "os": "ZMap / escaner sin opciones TCP", "family": "Escaner", "confidence": "media"},
+    {"ttl": 64, "window": 4096, "options": "mss", "os": "Escaner de puertos (hping / scapy)", "family": "Escaner", "confidence": "media"},
+    {"ttl": 64, "window": 0, "options": "", "os": "Paquete fabricado a mano (window 0)", "family": "Escaner", "confidence": "media"}
+  ]
+}

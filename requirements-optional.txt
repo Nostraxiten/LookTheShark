@@ -1,0 +1,14 @@
+# Extras opcionales de LookingTheShark.
+#
+# La herramienta funciona al 100% sin ellos; cada uno anade una capacidad
+# concreta. Instalalos solo si los necesitas:
+#
+#   .venv/bin/pip install -r requirements-optional.txt
+#
+# Ojo: a diferencia de requirements.txt, algunos de estos si traen extensiones
+# compiladas y pueden tardar mas o necesitar un compilador.
+
+geoip2>=4.8.0       # geolocalizacion de IPs (requiere ademas la base GeoLite2
+                    # en data/geoip/GeoLite2-City.mmdb, que se descarga aparte)
+brotli>=1.1.0       # descomprimir cuerpos HTTP con Content-Encoding: br
+zstandard>=0.22.0   # leer capturas comprimidas con zstd (.pcapng.zst)

@@ -1,0 +1,15 @@
+# LookingTheShark — dependencias.
+#
+# Solo dos, ambas Python puro: se instalan como wheel en segundos y no
+# necesitan compilador, ni cabeceras de desarrollo, ni permisos de
+# administrador. Instalacion identica en Windows, Linux y macOS.
+#
+#   python -m venv .venv
+#   .venv/bin/pip install -r requirements.txt        # Linux / macOS
+#   .venv\Scripts\pip install -r requirements.txt    # Windows
+#
+# NO hace falta Wireshark ni tshark: desde la version 2.0 el lector de
+# capturas y todos los disectores son nativos (paquete core/).
+
+rich>=13.7.0        # tablas, color y progreso en el terminal
+jinja2>=3.1.0       # plantillas de los informes HTML y Markdown

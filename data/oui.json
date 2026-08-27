@@ -1,0 +1,131 @@
+{
+  "_comment": "Prefijos OUI mas habituales para poner nombre al fabricante de una MAC. Es una lista curada, NO el registro completo del IEEE (que ocupa varios MB). Para cobertura total descarga https://standards-oui.ieee.org/oui/oui.txt y guardalo como data/oui.txt: LookingTheShark lo carga automaticamente y tiene prioridad sobre esta lista.",
+
+  "00:50:56": "VMware", "00:0C:29": "VMware", "00:05:69": "VMware", "00:1C:14": "VMware",
+  "08:00:27": "VirtualBox (Oracle)", "0A:00:27": "VirtualBox (host-only)",
+  "52:54:00": "QEMU / KVM", "00:15:5D": "Microsoft Hyper-V", "00:16:3E": "Xen",
+  "02:42:AC": "Docker (bridge)", "00:1C:42": "Parallels", "00:03:FF": "Microsoft (virtual)",
+  "00:0F:4B": "Oracle VM", "00:21:F6": "Oracle VirtualBox",
+
+  "B8:27:EB": "Raspberry Pi Foundation", "DC:A6:32": "Raspberry Pi Trading",
+  "E4:5F:01": "Raspberry Pi Trading", "28:CD:C1": "Raspberry Pi Trading",
+  "D8:3A:DD": "Raspberry Pi Trading", "2C:CF:67": "Raspberry Pi Trading",
+
+  "18:FE:34": "Espressif (ESP8266/ESP32)", "24:0A:C4": "Espressif (ESP32)",
+  "24:B2:DE": "Espressif", "2C:3A:E8": "Espressif", "30:AE:A4": "Espressif",
+  "5C:CF:7F": "Espressif (ESP8266)", "60:01:94": "Espressif", "84:0D:8E": "Espressif",
+  "84:F3:EB": "Espressif", "A0:20:A6": "Espressif", "AC:D0:74": "Espressif",
+  "B4:E6:2D": "Espressif", "BC:DD:C2": "Espressif", "CC:50:E3": "Espressif",
+  "D8:A0:1D": "Espressif", "DC:4F:22": "Espressif", "EC:FA:BC": "Espressif",
+
+  "00:03:93": "Apple", "00:0D:93": "Apple", "00:1B:63": "Apple", "00:1D:4F": "Apple",
+  "00:1E:C2": "Apple", "00:23:12": "Apple", "00:25:00": "Apple", "00:26:BB": "Apple",
+  "04:0C:CE": "Apple", "04:1E:64": "Apple", "04:54:53": "Apple", "08:00:07": "Apple",
+  "0C:30:21": "Apple", "0C:74:C2": "Apple", "3C:07:54": "Apple", "68:AB:1E": "Apple",
+  "90:B2:1F": "Apple", "AC:DE:48": "Apple (privado)", "D8:9E:3F": "Apple",
+  "F0:18:98": "Apple", "F4:0F:24": "Apple", "A4:83:E7": "Apple", "7C:D1:C3": "Apple",
+
+  "00:1B:21": "Intel", "00:1E:67": "Intel", "00:1F:3B": "Intel", "00:24:D7": "Intel",
+  "00:26:C7": "Intel", "00:0E:35": "Intel", "00:13:02": "Intel", "00:16:6F": "Intel",
+  "00:19:D1": "Intel", "00:21:6A": "Intel", "00:22:FB": "Intel", "00:27:10": "Intel",
+  "34:13:E8": "Intel", "7C:7A:91": "Intel", "A0:A8:CD": "Intel", "8C:16:45": "Intel",
+  "00:1C:BF": "Intel", "00:0C:F1": "Intel", "00:15:17": "Intel", "3C:A9:F4": "Intel",
+
+  "00:0F:1F": "Dell", "00:14:22": "Dell", "00:21:9B": "Dell", "00:22:19": "Dell",
+  "00:24:E8": "Dell", "00:26:B9": "Dell", "B8:2A:72": "Dell", "F8:BC:12": "Dell",
+  "00:12:3F": "Dell", "00:13:72": "Dell", "00:15:C5": "Dell", "00:18:8B": "Dell",
+  "00:19:B9": "Dell", "00:1A:A0": "Dell", "00:1C:23": "Dell", "00:1E:4F": "Dell",
+
+  "00:24:81": "Hewlett-Packard", "00:1F:29": "Hewlett-Packard", "00:26:55": "Hewlett-Packard",
+  "3C:D9:2B": "Hewlett-Packard", "00:0B:CD": "Hewlett-Packard", "00:14:38": "Hewlett-Packard",
+  "00:21:5A": "Hewlett-Packard", "00:25:B3": "Hewlett-Packard", "00:1E:0B": "Hewlett-Packard",
+  "00:23:7D": "Hewlett-Packard", "94:B4:0F": "Aruba (HPE)", "6C:F3:7F": "Aruba (HPE)",
+  "00:0B:86": "Aruba (HPE)", "D8:C7:C8": "Aruba (HPE)",
+
+  "00:00:0C": "Cisco", "00:01:42": "Cisco", "00:0A:41": "Cisco", "00:1A:A1": "Cisco",
+  "00:1B:0C": "Cisco", "00:1D:70": "Cisco", "00:24:97": "Cisco", "00:26:99": "Cisco",
+  "00:05:9A": "Cisco", "00:0F:23": "Cisco", "00:1E:BE": "Cisco", "00:23:04": "Cisco",
+  "00:1F:9E": "Cisco", "00:1C:73": "Arista Networks", "44:4C:A8": "Arista Networks",
+
+  "00:05:85": "Juniper Networks", "2C:6B:F5": "Juniper Networks", "3C:8A:B0": "Juniper Networks",
+  "78:19:F7": "Juniper Networks", "84:18:88": "Juniper Networks",
+  "00:09:0F": "Fortinet", "08:5B:0E": "Fortinet", "90:6C:AC": "Fortinet",
+  "00:1B:17": "Palo Alto Networks", "B4:0C:25": "Palo Alto Networks",
+
+  "4C:5E:0C": "MikroTik", "64:D1:54": "MikroTik", "6C:3B:6B": "MikroTik",
+  "D4:CA:6D": "MikroTik", "08:55:31": "MikroTik", "2C:C8:1B": "MikroTik",
+  "48:8F:5A": "MikroTik", "CC:2D:E0": "MikroTik", "E4:8D:8C": "MikroTik", "74:4D:28": "MikroTik",
+
+  "24:A4:3C": "Ubiquiti", "04:18:D6": "Ubiquiti", "44:D9:E7": "Ubiquiti",
+  "78:8A:20": "Ubiquiti", "DC:9F:DB": "Ubiquiti", "68:72:51": "Ubiquiti",
+  "F0:9F:C2": "Ubiquiti", "74:83:C2": "Ubiquiti", "80:2A:A8": "Ubiquiti", "B4:FB:E4": "Ubiquiti",
+
+  "14:CC:20": "TP-Link", "50:C7:BF": "TP-Link", "60:E3:27": "TP-Link", "A0:F3:C1": "TP-Link",
+  "C0:4A:00": "TP-Link", "EC:08:6B": "TP-Link", "F4:F2:6D": "TP-Link", "98:DA:C4": "TP-Link",
+  "30:B5:C2": "TP-Link", "B0:48:7A": "TP-Link",
+
+  "00:1B:FC": "ASUSTek", "00:0C:6E": "ASUSTek", "08:60:6E": "ASUSTek", "1C:87:2C": "ASUSTek",
+  "2C:56:DC": "ASUSTek", "38:D5:47": "ASUSTek", "50:46:5D": "ASUSTek", "74:D0:2B": "ASUSTek",
+  "AC:22:0B": "ASUSTek", "D8:50:E6": "ASUSTek",
+
+  "00:05:5D": "D-Link", "00:0D:88": "D-Link", "00:13:46": "D-Link", "00:15:E9": "D-Link",
+  "00:17:9A": "D-Link", "00:19:5B": "D-Link", "1C:7E:E5": "D-Link", "28:10:7B": "D-Link",
+  "90:94:E4": "D-Link", "C8:BE:19": "D-Link",
+
+  "00:09:5B": "Netgear", "00:14:6C": "Netgear", "00:1B:2F": "Netgear", "00:1E:2A": "Netgear",
+  "00:22:3F": "Netgear", "20:4E:7F": "Netgear", "2C:30:33": "Netgear", "A0:40:A0": "Netgear",
+  "C0:3F:0E": "Netgear", "E0:91:F5": "Netgear",
+
+  "00:12:47": "Samsung", "00:15:99": "Samsung", "00:16:32": "Samsung", "00:1A:8A": "Samsung",
+  "00:21:19": "Samsung", "08:37:3D": "Samsung", "34:23:BA": "Samsung", "5C:0A:5B": "Samsung",
+  "78:1F:DB": "Samsung", "BC:20:A4": "Samsung", "F0:25:B7": "Samsung", "8C:77:12": "Samsung",
+
+  "00:18:82": "Huawei", "00:25:9E": "Huawei", "00:E0:FC": "Huawei", "28:6E:D4": "Huawei",
+  "48:46:FB": "Huawei", "5C:7D:5E": "Huawei", "70:72:3C": "Huawei", "78:D7:52": "Huawei",
+  "AC:E2:15": "Huawei", "F8:E8:11": "Huawei",
+
+  "00:9E:C8": "Xiaomi", "0C:1D:AF": "Xiaomi", "14:F6:5A": "Xiaomi", "28:6C:07": "Xiaomi",
+  "34:CE:00": "Xiaomi", "50:8F:4C": "Xiaomi", "64:09:80": "Xiaomi", "78:11:DC": "Xiaomi",
+  "8C:BE:BE": "Xiaomi", "F0:B4:29": "Xiaomi",
+
+  "00:01:4A": "Sony", "00:0A:D9": "Sony", "00:13:15": "Sony", "00:1A:80": "Sony",
+  "00:24:BE": "Sony", "30:17:C8": "Sony", "54:42:49": "Sony", "78:84:3C": "Sony",
+  "B4:52:7E": "Sony", "FC:0F:E6": "Sony (PlayStation)",
+
+  "00:1C:62": "LG Electronics", "00:1E:75": "LG Electronics", "00:34:DA": "LG Electronics",
+  "10:68:3F": "LG Electronics", "2C:54:CF": "LG Electronics", "34:FC:EF": "LG Electronics",
+  "58:A2:B5": "LG Electronics", "88:C9:D0": "LG Electronics", "A8:16:B2": "LG Electronics",
+
+  "00:09:BF": "Nintendo", "00:17:AB": "Nintendo", "00:1B:7A": "Nintendo", "00:1F:32": "Nintendo",
+  "00:21:BD": "Nintendo", "00:24:44": "Nintendo", "34:AF:2C": "Nintendo", "40:F4:07": "Nintendo",
+  "58:BD:A3": "Nintendo", "8C:CD:E8": "Nintendo", "98:B6:E9": "Nintendo", "E0:E7:51": "Nintendo",
+
+  "44:65:0D": "Amazon Technologies", "68:37:E9": "Amazon Technologies",
+  "FC:65:DE": "Amazon Technologies", "74:C2:46": "Amazon Technologies",
+  "34:D2:70": "Amazon Technologies", "50:DC:E7": "Amazon Technologies",
+  "40:B4:CD": "Amazon Technologies", "CC:6D:A0": "Roku", "B0:A7:37": "Roku",
+  "D8:31:34": "Roku", "AC:3A:7A": "Roku", "88:DE:A9": "Roku",
+
+  "00:1A:11": "Google", "3C:5A:B4": "Google", "F4:F5:D8": "Google", "94:EB:2C": "Google",
+  "18:B4:30": "Nest Labs (Google)", "00:17:88": "Philips Hue (Signify)",
+  "EC:B5:FA": "Philips Lighting",
+
+  "00:E0:4C": "Realtek", "00:10:18": "Broadcom", "00:05:B5": "Broadcom",
+  "00:01:6C": "Foxconn (Hon Hai)", "00:16:CE": "Foxconn (Hon Hai)", "00:1B:24": "Foxconn (Hon Hai)",
+  "00:21:CC": "Foxconn (Hon Hai)", "00:25:D3": "Foxconn (Hon Hai)", "20:16:D8": "Foxconn (Hon Hai)",
+  "28:C2:DD": "Foxconn (Hon Hai)", "90:4C:E5": "Foxconn (Hon Hai)", "C0:18:85": "Foxconn (Hon Hai)",
+  "00:1E:68": "Quanta Computer", "00:23:AE": "Quanta Computer", "90:1B:0E": "Quanta Computer",
+  "D8:9D:67": "Quanta Computer", "3C:97:0E": "Wistron",
+  "00:25:90": "Super Micro", "0C:C4:7A": "Super Micro", "3C:EC:EF": "Super Micro",
+  "AC:1F:6B": "Super Micro",
+
+  "00:00:85": "Canon", "00:1E:8F": "Canon", "2C:9E:FC": "Canon", "88:87:17": "Canon",
+  "00:80:77": "Brother", "00:1B:A9": "Brother", "30:05:5C": "Brother", "B4:22:00": "Brother",
+  "00:00:48": "Epson", "00:26:AB": "Epson", "38:1A:52": "Epson", "44:D2:44": "Epson",
+  "64:EB:8C": "Epson", "00:07:4D": "Zebra Technologies",
+
+  "00:40:8C": "Axis Communications", "AC:CC:8E": "Axis Communications",
+  "B8:A4:4F": "Axis Communications", "4C:BD:8F": "Hikvision", "44:19:B6": "Hikvision",
+  "BC:AD:28": "Hikvision", "C0:56:E3": "Hikvision", "28:57:BE": "Hikvision",
+  "3C:EF:8C": "Dahua", "4C:11:BF": "Dahua", "90:02:A9": "Dahua", "E0:50:8B": "Dahua"
+}

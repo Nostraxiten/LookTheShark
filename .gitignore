@@ -1,0 +1,62 @@
+# Entornos virtuales
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Bytecode y artefactos de empaquetado
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Informes generados por la herramienta
+informe_*.md
+informe_*.html
+informe_*.json
+informe_*.csv
+informe_captura.*
+
+# Ficheros reconstruidos de las capturas (pueden contener malware real)
+looktheshark_extracted/
+extraidos/
+objetos_extraidos/
+
+# Bases GeoIP que descarga el usuario (son grandes y tienen licencia propia)
+data/geoip/
+data/*.mmdb
+
+# Listas de reputacion del usuario (privadas de cada organizacion)
+data/reputation_feeds/*.txt
+data/reputation_feeds/*.csv
+data/reputation_feeds/*.list
+data/reputation_feeds/*.ioc
+
+# Base OUI completa del IEEE (varios MB, se descarga aparte)
+data/oui.txt
+
+# Capturas locales: nunca se suben a un repositorio
+*.pcap
+*.pcapng
+*.pcap.gz
+*.pcapng.gz
+*.cap
+!tests/sample_pcaps/.gitkeep
+
+# Cache de pruebas
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~

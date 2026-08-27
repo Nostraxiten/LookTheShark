@@ -1,0 +1,108 @@
+# Informe forense de red — LookingTheShark
+
+{% if captura %}
+**Captura:** `{{ captura.nombre }}` ({{ captura.formato }})
+**Periodo:** {{ captura.inicio }} → {{ captura.fin }} ({{ captura.duracion }})
+**Volumen:** {{ "{:,}".format(captura.paquetes) }} paquetes · {{ captura.bytes_legible }}
+**Equipos:** {{ captura.hosts }} ({{ captura.locales }} en la red local, {{ captura.externos }} externos)
+{% endif %}
+**Informe generado:** {{ generado }}{% if anonimizado %} · *direcciones anonimizadas*{% endif %}
+
+---
+
+## Resumen ejecutivo
+
+### {{ resumen.veredicto }}
+
+{{ resumen.explicacion }}
+
+| Severidad | Hallazgos |
+|---|---|
+{% for nivel in ['critico', 'alto', 'medio', 'bajo', 'info'] %}
+{% if resumen.por_severidad.get(nivel) %}
+| {{ nivel|upper }} | {{ resumen.por_severidad[nivel] }} |
+{% endif %}
+{% endfor %}
+| **Total** | **{{ resumen.total }}** |
+
+{% if resumen.contexto %}
+De los {{ resumen.contexto.equipos_totales }} equipos vistos, {{ resumen.contexto.equipos_afectados }} aparecen en algun hallazgo.
+{% if resumen.contexto.credenciales %}Se capturaron **{{ resumen.contexto.credenciales }} credencial{{ 'es' if resumen.contexto.credenciales != 1 }} en texto plano**. {% endif %}
+{% if resumen.contexto.secretos %}Se detectaron **{{ resumen.contexto.secretos }} datos sensibles** viajando sin cifrar. {% endif %}
+{% if resumen.contexto.ficheros_sospechosos %}Hay **{{ resumen.contexto.ficheros_sospechosos }} fichero{{ 's' if resumen.contexto.ficheros_sospechosos != 1 }} sospechoso{{ 's' if resumen.contexto.ficheros_sospechosos != 1 }}** transferido{{ 's' if resumen.contexto.ficheros_sospechosos != 1 }}. {% endif %}
+{% endif %}
+
+{% if resumen.prioridades %}
+### Por donde empezar
+
+{% for p in resumen.prioridades %}
+{{ loop.index }}. **[{{ p.severidad|upper }}]** {{ p.titulo }}{% if p.host %} — `{{ p.host }}`{% endif %}
+   → {{ p.accion }}
+{% endfor %}
+{% endif %}
+
+---
+
+## Inventario de equipos
+
+| Equipo | Sistema operativo | Fiabilidad | Basado en | Rol | Trafico |
+|---|---|---|---|---|---|
+{% for h in inventario[:40] %}
+| `{{ h.ip }}`{% if h.nombre %} «{{ h.nombre }}»{% endif %} | {{ h.so }} | {{ h.confianza }} | {{ h.fuentes or '—' }} | {{ h.rol }} | {{ h.bytes_legible }} |
+{% endfor %}
+
+---
+
+## Hallazgos
+
+{% for f in hallazgos %}
+### {{ loop.index }}. [{{ f.severidad|upper }}] {{ f.titulo }}
+
+{{ f.descripcion }}
+
+- **Evidencia:** {{ f.evidencia or '—' }}
+- **Que hacer:** {{ f.recomendacion or 'Revisar manualmente.' }}
+- **Fiabilidad:** confianza {{ f.confianza }}
+{% if f.host %}
+- **Equipo:** `{{ f.host }}`{% if f.host_so %} ({{ f.host_so }}){% endif %}
+{% endif %}
+{% if f.mitre_name %}
+- **MITRE ATT&CK:** {{ f.mitre_name }}{% if f.mitre_tactica %} — {{ f.mitre_tactica }}{% endif %}
+{% endif %}
+{% if f.timestamp %}
+- **Momento:** {{ f.timestamp }}
+{% endif %}
+
+{% else %}
+No se registraron hallazgos.
+{% endfor %}
+
+{% if http %}
+---
+
+## Peticiones HTTP reconstruidas
+
+| Hora | Equipo | Sistema | Metodo | URL | Codigo | Tipo | Tamano |
+|---|---|---|---|---|---|---|---|
+{% for t in http[:150] %}
+| {{ t.hora }} | `{{ t.cliente }}` | {{ t.so_cliente or '—' }} | {{ t.metodo }} | {{ t.url[:90] }} | {{ t.codigo or '—' }} | {{ t.tipo or '—' }} | {{ t.tamano }} |
+{% endfor %}
+{% if http|length > 150 %}
+
+*({{ http|length - 150 }} peticiones mas omitidas.)*
+{% endif %}
+{% endif %}
+
+{% if cronologia %}
+---
+
+## Cronologia
+
+{% for e in cronologia[:200] %}
+- `{{ e.hora }}` **{{ e.actor }}** {{ e.accion }}{% if e.detalle %} — {{ e.detalle }}{% endif %}
+{% endfor %}
+{% endif %}
+
+---
+
+*Generado por LookingTheShark v{{ version }}. Analiza unicamente capturas propias o para las que tengas autorizacion expresa.*
