@@ -8,7 +8,7 @@
 [![MITRE](https://img.shields.io/badge/MITRE-ATT%26CK-red.svg?style=for-the-badge)](https://attack.mitre.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg?style=for-the-badge)](#installation)
 
-<img width="656" height="401" alt="image" src="https://github.com/user-attachments/assets/d5e77506-316d-4511-86b2-84907296f418" />
+<img width="585" height="357" alt="Captura de pantalla 2026-08-27 183132" src="https://github.com/user-attachments/assets/43edec5e-d043-429f-a6f1-986043dac539" />
 
 ## Overview
 
