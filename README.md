@@ -381,6 +381,41 @@ tool is deliberately explicit about the confidence behind each one, and about
 what would explain it legitimately. A network capture only ever shows what
 happened during the capture.
 
+
+
+WARNING
+-------
+
+LookTheShark is an analysis and forensic assistance tool, not a definitive
+network-security detection system.
+
+The results produced by this tool may contain false positives or false
+negatives. Some detection methods, heuristics, parsers, or other functions
+may be incomplete, inaccurate, experimental, or malfunction under certain
+conditions. Network captures can also contain missing, malformed, encrypted,
+or otherwise insufficient information, which may affect the accuracy of the
+analysis.
+
+Do NOT treat a finding, alert, classification, or absence of a finding as
+conclusive evidence of malicious or benign activity. Results should always
+be reviewed and validated manually using appropriate forensic and network
+analysis tools, including Wireshark or other specialized software when
+appropriate.
+
+The developer has personally tested LookTheShark in controlled environments,
+including analyzing a Wireshark capture of an ARP spoofing scenario, where
+the tool successfully detected the spoofing activity. However, successful
+results in testing do not guarantee correct detection in every real-world
+environment or capture.
+
+Use this tool as an additional source of evidence and investigation aid,
+not as the sole basis for security decisions, incident-response conclusions,
+or forensic findings.
+
+Use at your own discretion and always verify important results independently.
+
+
+
 ---
 
 ## Credits
