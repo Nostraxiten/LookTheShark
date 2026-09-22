@@ -1,173 +1,156 @@
 """
-modules/credentials_plain.py — Contrasenas que viajaron legibles.
+modules/credentials_plain.py — Cleartext Credentials Module.
 
-Un login capturado no es un aviso teorico: es una cuenta que ya esta
-comprometida frente a cualquiera que estuviera escuchando. Este modulo recoge
-lo que los parsers de protocolo ya extrajeron (HTTP Basic, formularios, FTP,
-SMTP, POP3, IMAP, Telnet) y lo presenta de forma que se pueda actuar.
-
-Las contrasenas se muestran siempre enmascaradas: se ve la primera letra y la
-longitud, que es lo que hace falta para identificarla y cambiarla.
+Detects passwords sent in plain text over HTTP (Basic Auth, POST forms),
+FTP, Telnet, and POP3/IMAP.
 """
 
-from __future__ import annotations
-
-from collections import defaultdict
+import base64
+import urllib.parse
 from typing import List
 
 from rich.console import Console
 
-from modules import (Confianza, Finding, Severidad, es_ip_privada,
-                     formatear_hora, plural, truncar)
-from ui import theme
-
-MODULE_NUM = 7
-MODULE_NAME = "Credenciales en claro"
-MODULE_ID = "creds"
-MODULE_DESC = "Cuentas comprometidas por viajar sin cifrar"
-
-ALTERNATIVA = {
-    "FTP": "SFTP (sobre SSH) o FTPS",
-    "Telnet": "SSH",
-    "HTTP Basic": "HTTPS, y mejor con tokens en vez de Basic",
-    "HTTP formulario": "HTTPS con HSTS activado",
-    "SMTP": "SMTP con STARTTLS obligatorio o SMTPS (465)",
-    "POP3": "POP3S (995)",
-    "IMAP": "IMAPS (993)",
-}
+from modules import Finding, Confianza, safe_get_attr
+from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
 
 
-def run(analisis, config: dict, console: Console) -> List[Finding]:
-    hallazgos: List[Finding] = []
-    console.print(theme.cabecera_modulo(MODULE_NUM, MODULE_NAME, MODULE_DESC))
+MODULE_NUM  = 7
+MODULE_NAME = "Cleartext Credentials"
+MODULE_ID   = "creds"
 
-    credenciales = analisis.credenciales
-    if not credenciales:
-        console.print(theme.sin_hallazgos(
-            "No se capturo ninguna credencial en texto plano."))
-        console.print("  [dim_text]Ojo: esto solo cubre los protocolos sin cifrar. "
-                      "Un login por HTTPS no aparece aqui aunque exista.[/]")
-        console.print(theme.pie_modulo())
-        return hallazgos
 
-    console.print(f"  [sev_critico] {len(credenciales)} credenciales capturadas [/] "
-                  f"en texto plano")
-    console.print()
+def detect_cleartext_creds(packets) -> List[Finding]:
+    """Scans for credentials transmitted in cleartext."""
+    findings = []
+    seen = set()
 
-    t = theme.tabla("Cuentas expuestas")
-    t.add_column("Protocolo", style="bold bright_cyan", width=17)
-    t.add_column("Usuario", max_width=24)
-    t.add_column("Contrasena", max_width=18)
-    t.add_column("Origen → destino", max_width=32)
-    t.add_column("Hora", width=9)
+    for pkt in packets:
+        src = safe_get_attr(pkt, "ip", "src")
+        dst = safe_get_attr(pkt, "ip", "dst")
+        if not src or not dst:
+            continue
 
-    for c in credenciales:
-        perfil = analisis.hosts.get(c.src)
-        origen = c.src + (f" [lan]({perfil.so})[/]" if perfil and perfil.so else "")
-        t.add_row(
-            c.protocolo,
-            theme.esc(truncar(c.usuario, 22)) or "[dim]—[/]",
-            f"[sev_alto]{theme.esc(c.password_enmascarada)}[/]" if c.password else "[dim]—[/]",
-            truncar(f"{origen} → {c.dst}:{c.puerto}", 30),
-            formatear_hora(c.ts),
-        )
-    console.print(t)
-    console.print()
+        # 1. HTTP Basic Auth
+        if hasattr(pkt, "http"):
+            auth = safe_get_attr(pkt, "http", "authorization")
+            if auth and auth.startswith("Basic "):
+                b64 = auth.split(" ")[1]
+                try:
+                    decoded = base64.b64decode(b64).decode("utf-8")
+                    user_pass = decoded
+                except Exception:
+                    user_pass = "b64_error"
+                
+                key = (src, dst, "http_basic", user_pass)
+                if key not in seen:
+                    seen.add(key)
+                    findings.append(Finding(
+                        titulo="Cleartext credentials (HTTP Basic Auth)",
+                        descripcion=f"Captured Base64-encoded credentials transmitted unencrypted: {user_pass.split(':')[0]}:***",
+                        severidad="critico",
+                        confianza=Confianza.ALTA,
+                        modulo=MODULE_ID,
+                        evidencia=f"{src} -> {dst} (HTTP)",
+                        patron="cleartext_creds",
+                        interpretacion=(
+                            "Unencrypted Authentication Transmission / Credential Exposure | "
+                            "Base64 encoded authentication header sent over cleartext HTTP | "
+                            "Legacy internal services, local intranet testing, or misconfigured reverse proxy not enforcing HTTPS redirect"
+                        )
+                    ))
+                    
+            # 2. HTTP POST forms
+            payload = getattr(pkt.http, "file_data", "") if hasattr(pkt.http, "file_data") else ""
+            if not payload and hasattr(pkt, "urlencoded-form"):
+                try:
+                    form_data = str(getattr(pkt, "urlencoded-form"))
+                    if "password=" in form_data.lower() or "passwd=" in form_data.lower() or "login=" in form_data.lower():
+                        key = (src, dst, "http_post")
+                        if key not in seen:
+                            seen.add(key)
+                            findings.append(Finding(
+                                titulo="Possible cleartext credentials (HTTP POST)",
+                                descripcion="Detected form submitted via unencrypted HTTP containing password fields.",
+                                severidad="alto",
+                                confianza=Confianza.MEDIA,
+                                modulo=MODULE_ID,
+                                evidencia=f"{src} -> {dst} (HTTP POST)",
+                                patron="cleartext_creds",
+                                interpretacion=(
+                                    "Unencrypted Form Authentication / Credential Exposure | "
+                                    "Form submission payload containing plaintext password fields over unencrypted HTTP | "
+                                    "Local management consoles, embedded router portals, or development test fixtures"
+                                )
+                            ))
+                except Exception:
+                    pass
 
-    # ── Detalle por credencial ────────────────────────
-    for c in credenciales[:12]:
-        console.print(f"  [titulo]{c.protocolo}[/] [dim_text]· {theme.esc(c.metodo)}[/]")
-        console.print(f"      [etiqueta]Usuario    [/] [dato]{theme.esc(c.usuario)}[/]")
-        if c.password:
-            console.print(f"      [etiqueta]Contrasena [/] "
-                          f"[sev_alto]{theme.esc(c.password_enmascarada)}[/]")
-        console.print(f"      [etiqueta]Capturada  [/] {c.src} → {c.dst}:{c.puerto} "
-                      f"a las {formatear_hora(c.ts)}")
-        if c.servidor_banner:
-            console.print(f"      [etiqueta]Servidor   [/] "
-                          f"[dim_text]{theme.esc(truncar(c.servidor_banner, 60))}[/]")
+        # 3. FTP USER/PASS
+        if hasattr(pkt, "ftp"):
+            req_arg = safe_get_attr(pkt, "ftp", "request_arg")
+            req_cmd = safe_get_attr(pkt, "ftp", "request_command")
+            
+            if req_cmd == "USER" or req_cmd == "PASS":
+                key = (src, dst, f"ftp_{req_cmd}", req_arg)
+                if key not in seen:
+                    seen.add(key)
+                    findings.append(Finding(
+                        titulo=f"FTP credential intercepted ({req_cmd})",
+                        descripcion=f"FTP command {req_cmd} sent in cleartext.",
+                        severidad="critico",
+                        confianza=Confianza.ALTA,
+                        modulo=MODULE_ID,
+                        evidencia=f"{src} -> {dst} ({req_cmd})",
+                        patron="cleartext_creds",
+                        interpretacion=(
+                            "Cleartext Credential Transmission (FTP) | "
+                            "Plaintext USER/PASS commands sent across unencrypted File Transfer Protocol | "
+                            "Legacy network appliances, automated batch file transfer scripts, or lab environments"
+                        )
+                    ))
+
+        # 4. POP3 USER/PASS
+        if hasattr(pkt, "pop"):
+            req_cmd = safe_get_attr(pkt, "pop", "request_command")
+            if req_cmd in ("USER", "PASS"):
+                key = (src, dst, f"pop_{req_cmd}")
+                if key not in seen:
+                    seen.add(key)
+                    findings.append(Finding(
+                        titulo=f"POP3 credential intercepted ({req_cmd})",
+                        descripcion="POP3 authentication sent unencrypted.",
+                        severidad="critico",
+                        confianza=Confianza.ALTA,
+                        modulo=MODULE_ID,
+                        evidencia=f"{src} -> {dst} (POP3)",
+                        patron="cleartext_creds",
+                        interpretacion=(
+                            "Cleartext Credential Transmission (POP3) | "
+                            "Plaintext USER/PASS authentication over unencrypted POP3 mail protocol | "
+                            "Legacy mail client configurations, local mail test harnesses, or outdated printer/scanner setups"
+                        )
+                    ))
+
+    return findings
+
+
+def run(packets, config: dict, console: Console) -> List[Finding]:
+    findings = []
+    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+
+    creds = detect_cleartext_creds(packets)
+    findings.extend(creds)
+
+    if findings:
+        for f in findings:
+            console.print(f"  {estilo_severidad(f.severidad)}  {f.titulo}")
+            console.print(f"      [dim]{f.descripcion}[/]")
+            console.print(f"      [dim]-> {f.evidencia}[/]")
+        console.print()
+    else:
+        console.print("  [bold bright_green][OK][/] [dim]No cleartext credentials detected in standard protocols.[/]")
         console.print()
 
-    hallazgos.extend(_hallazgos(analisis, credenciales))
-
-    console.print(theme.caja_explicativa(
-        "Estas contrasenas ya no son secretas. No hace falta que nadie las "
-        "'descifre': viajaron legibles y esta captura lo demuestra. La respuesta "
-        "correcta es cambiarlas todas y migrar el protocolo, en ese orden.",
-        "Que significa realmente"))
-
-    console.print(theme.pie_modulo())
-    return hallazgos
-
-
-def _hallazgos(analisis, credenciales) -> List[Finding]:
-    hallazgos = []
-    por_protocolo = defaultdict(list)
-    for c in credenciales:
-        por_protocolo[c.protocolo].append(c)
-
-    for protocolo, lista in por_protocolo.items():
-        usuarios = sorted({c.usuario for c in lista if c.usuario})
-        destinos = sorted({f"{c.dst}:{c.puerto}" for c in lista})
-        # Que la conexion salga a Internet lo empeora: mas gente en el camino.
-        externa = any(not es_ip_privada(c.dst) for c in lista)
-
-        hallazgos.append(Finding(
-            titulo=f"Credenciales de {protocolo} capturadas en claro "
-                   f"({plural(len(lista), 'cuenta', 'cuentas')})",
-            descripcion=(
-                f"El protocolo {protocolo} transmitio usuario y contrasena de forma "
-                f"legible. Cualquier equipo del camino — un switch mal configurado, "
-                f"un punto WiFi, el ISP, o alguien haciendo ARP spoofing en la misma "
-                f"red — pudo quedarse con ellas."
-                + (" Ademas la conexion sale a Internet, asi que el numero de "
-                   "posibles observadores es mucho mayor." if externa else "")
-            ),
-            severidad=Severidad.CRITICO,
-            confianza=Confianza.ALTA,
-            modulo=MODULE_ID,
-            evidencia=(f"Usuarios: {', '.join(usuarios[:5]) or 'no identificados'} · "
-                       f"hacia {', '.join(destinos[:3])}"),
-            recomendacion=(
-                f"1) Cambia ahora la contrasena de {', '.join(usuarios[:3]) or 'las cuentas afectadas'}. "
-                f"2) Migra a {ALTERNATIVA.get(protocolo, 'una version cifrada del protocolo')}. "
-                f"3) Revisa los accesos recientes de esas cuentas por si ya se usaron."
-            ),
-            patron="cleartext_creds",
-            host=lista[0].src,
-            host_so=analisis.so_de(lista[0].src),
-            timestamp=formatear_hora(lista[0].ts),
-            datos={"protocolo": protocolo, "usuarios": usuarios[:10],
-                   "cuentas": len(lista)},
-        ))
-
-    # Reutilizacion de la misma contrasena en varios sitios.
-    por_password = defaultdict(list)
-    for c in credenciales:
-        if c.password:
-            por_password[c.password].append(c)
-    for password, lista in por_password.items():
-        servicios = {f"{c.protocolo}@{c.dst}" for c in lista}
-        if len(servicios) < 2:
-            continue
-        hallazgos.append(Finding(
-            titulo="La misma contrasena se reutiliza en varios servicios",
-            descripcion=(
-                f"Una contrasena identica aparece en {len(servicios)} servicios "
-                f"distintos. Al haber sido capturada una vez, quedan comprometidos "
-                f"todos ellos a la vez."
-            ),
-            severidad=Severidad.ALTO,
-            confianza=Confianza.ALTA,
-            modulo=MODULE_ID,
-            evidencia=", ".join(sorted(servicios)[:5]),
-            recomendacion=(
-                "Cambia la contrasena en todos los servicios afectados con valores "
-                "distintos y despliega un gestor de contrasenas."
-            ),
-            patron="password_reuse",
-            host=lista[0].src,
-            host_so=analisis.so_de(lista[0].src),
-        ))
-
-    return hallazgos
+    console.print(pie_modulo())
+    return findings

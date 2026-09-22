@@ -1,422 +1,285 @@
 """
-modules/dns_analysis.py — Que nombres se resolvieron y cuales huelen mal.
+modules/dns_analysis.py — DNS Analysis Module.
 
-DNS es el mejor resumen de lo que hizo un equipo: aunque el trafico vaya
-cifrado, los nombres que pidio no mienten. Aqui se ven los dominios, quien los
-pidio, si alguno tiene pinta de generado por algoritmo (DGA), y si alguien esta
-usando DNS como tunel para sacar datos.
+Extracts DNS queries/responses, calculates domain entropy to detect
+DGA/tunneling, and analyzes suspicious query patterns.
 """
 
-from __future__ import annotations
-
 import math
-import re
-from collections import Counter, defaultdict
+from collections import defaultdict, Counter
 from typing import List
 
 from rich.console import Console
+from rich.table import Table
+from rich import box
 
-from modules import (Confianza, Finding, Severidad, formatear_hora, plural,
-                     truncar)
-from ui import theme
+from modules import Finding, Confianza, safe_get_attr
+from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
 
-MODULE_NUM = 3
+
+MODULE_NUM  = 3
 MODULE_NAME = "DNS"
-MODULE_ID = "dns"
-MODULE_DESC = "Que nombres pidio cada equipo y cuales no cuadran"
+MODULE_ID   = "dns"
 
-UMBRAL_ENTROPIA = 3.6
-LARGO_TUNEL = 45          # caracteres en una sola etiqueta
-QPS_TUNEL = 8.0           # consultas por segundo hacia el mismo servidor
-MIN_CONSULTAS_TUNEL = 25
-
-# TLD baratos y muy usados en campanas de malware y phishing.
-TLD_RIESGO = {
-    "tk", "ml", "ga", "cf", "gq", "xyz", "top", "buzz", "click", "link",
-    "work", "loan", "download", "bid", "win", "review", "date", "stream",
-    "racing", "party", "science", "men", "zip", "mov", "rest", "cyou",
-}
-
-# Dominios cuya entropia alta es normal (hashes de CDN, UUIDs de servicios).
-DOMINIOS_ENTROPIA_NORMAL = re.compile(
-    r"(?:cloudfront\.net|akamai(?:edge|hd)?\.net|azureedge\.net|fastly\.net|"
-    r"cdn\.|edgekey\.net|amazonaws\.com|googleusercontent\.com|1e100\.net|"
-    r"gvt\d\.com|windowsupdate\.com|office365\.com|icloud\.com|"
-    r"digicert\.com|sectigo\.com|letsencrypt\.org|ocsp\.|crl\.)", re.I)
+ENTROPY_THRESHOLD = 3.8
+TUNNEL_LABEL_LEN = 50
+TUNNEL_QPS_THRESHOLD = 5.0
 
 
-def entropia(texto: str) -> float:
-    """Entropia de Shannon en bits por caracter."""
-    if not texto:
+def entropy_score(domain: str) -> float:
+    """Calculates Shannon entropy of domain name without TLD."""
+    parts = domain.rstrip(".").split(".")
+    if len(parts) > 1:
+        label = ".".join(parts[:-1])
+    else:
+        label = domain
+
+    if not label:
         return 0.0
-    frecuencias = Counter(texto.lower())
-    total = len(texto)
-    return -sum((c / total) * math.log2(c / total) for c in frecuencias.values())
+
+    freq = Counter(label.lower())
+    total = len(label)
+    return -sum((c / total) * math.log2(c / total) for c in freq.values())
 
 
-def _dominio_registrable(nombre: str) -> str:
-    """'a.b.ejemplo.co.uk' -> 'ejemplo.co.uk' (aproximacion sin lista PSL)."""
-    partes = nombre.rstrip(".").split(".")
-    if len(partes) <= 2:
-        return ".".join(partes)
-    # TLD de segundo nivel mas comunes.
-    if partes[-2] in ("co", "com", "org", "net", "gov", "edu", "ac") and len(partes[-1]) == 2:
-        return ".".join(partes[-3:])
-    return ".".join(partes[-2:])
+def extract_dns_queries(packets) -> list:
+    """Extracts all DNS queries from the capture."""
+    queries = []
+
+    for pkt in packets:
+        if not hasattr(pkt, "dns"):
+            continue
+
+        dns_layer = pkt.dns
+
+        qr = safe_get_attr(pkt, "dns", "flags_response", "")
+        query_name = safe_get_attr(pkt, "dns", "qry_name", "")
+        query_type = safe_get_attr(pkt, "dns", "qry_type", "")
+
+        if not query_name:
+            continue
+
+        src = safe_get_attr(pkt, "ip", "src", "")
+        dst = safe_get_attr(pkt, "ip", "dst", "")
+
+        answers = []
+        try:
+            if hasattr(dns_layer, "a"):
+                answers.append(str(dns_layer.a))
+            if hasattr(dns_layer, "aaaa"):
+                answers.append(str(dns_layer.aaaa))
+            if hasattr(dns_layer, "cname"):
+                answers.append(str(dns_layer.cname))
+        except Exception:
+            pass
+
+        timestamp = ""
+        try:
+            timestamp = str(pkt.sniff_time)
+        except Exception:
+            pass
+
+        queries.append({
+            "name": query_name,
+            "type": query_type,
+            "src": src,
+            "dst": dst,
+            "answers": answers,
+            "is_response": str(qr) == "1",
+            "timestamp": timestamp,
+        })
+
+    return queries
 
 
-def run(analisis, config: dict, console: Console) -> List[Finding]:
-    hallazgos: List[Finding] = []
-    console.print(theme.cabecera_modulo(MODULE_NUM, MODULE_NAME, MODULE_DESC))
+def detect_dga(queries: list) -> List[Finding]:
+    """Detects domains with high entropy (possible DGA)."""
+    findings = []
+    checked = set()
 
-    eventos = analisis.dns
-    if not eventos:
-        console.print("  [dim_text]No hay trafico DNS en la captura.[/]")
-        console.print("  [dim_text]Si el equipo usa DoH/DoT (DNS cifrado) las "
-                      "consultas viajan dentro de TLS y no se ven aqui.[/]")
-        console.print(theme.pie_modulo())
-        return hallazgos
+    for q in queries:
+        domain = q["name"].lower().rstrip(".")
+        if domain in checked:
+            continue
+        checked.add(domain)
 
-    consultas = [e for e in eventos if not e.es_respuesta]
-    respuestas = [e for e in eventos if e.es_respuesta]
-    dominios = Counter(e.nombre for e in consultas if e.nombre)
-    fallidas = [e for e in respuestas if e.rcode not in ("NOERROR",)]
+        ent = entropy_score(domain)
+        if ent >= ENTROPY_THRESHOLD:
+            parts = domain.split(".")
+            if len(parts) >= 2 and len(parts[-2]) <= 3:
+                continue
 
-    console.print(theme.tabla_clave_valor([
-        ("Consultas", f"[valor]{len(consultas)}[/]"),
-        ("Respuestas", f"[valor]{len(respuestas)}[/]"),
-        ("Dominios unicos", f"[valor]{len(dominios)}[/]"),
-        ("Resoluciones fallidas", f"[valor]{len(fallidas)}[/]"
-         + (f"  [dim_text]({len(fallidas)/max(1,len(respuestas))*100:.0f}% del total)[/]"
-            if respuestas else "")),
-    ]))
+            findings.append(Finding(
+                titulo=f"High entropy domain: {domain}",
+                descripcion=(
+                    f"Shannon entropy: {ent:.2f} (threshold: {ENTROPY_THRESHOLD}). "
+                    f"Could indicate an algorithmically generated domain (DGA). "
+                    f"Review manually."
+                ),
+                severidad="medio",
+                confianza=Confianza.MEDIA,
+                modulo=MODULE_ID,
+                evidencia=f"Query from {q['src']} -> {q['dst']}",
+                patron="dga",
+                timestamp=q.get("timestamp", ""),
+                interpretacion=(
+                    "Domain Generation Algorithms (DGA) / C2 Communication | "
+                    "High Shannon entropy (>3.8) in query domain label | "
+                    "Legitimate content delivery networks (CDNs), cloud load balancers, anti-spam lookups, or UUID-based API endpoints"
+                )
+            ))
+
+    return findings
+
+
+def detect_tunneling(queries: list, threshold: float = TUNNEL_QPS_THRESHOLD) -> List[Finding]:
+    """Detects potential DNS tunneling via query rate or long subdomains."""
+    findings = []
+
+    # 1. Long subdomains
+    checked_long = set()
+    for q in queries:
+        domain = q["name"].lower().rstrip(".")
+        parts = domain.split(".")
+
+        for part in parts:
+            if len(part) > TUNNEL_LABEL_LEN and domain not in checked_long:
+                checked_long.add(domain)
+                findings.append(Finding(
+                    titulo=f"Unusually long subdomain: {domain[:60]}...",
+                    descripcion=(
+                        f"Label with {len(part)} characters detected. "
+                        f"Long subdomains are typical of DNS tunneling (encoded payloads). "
+                        f"Review manually."
+                    ),
+                    severidad="alto",
+                    confianza=Confianza.MEDIA,
+                    modulo=MODULE_ID,
+                    evidencia=f"Query from {q['src']}",
+                    patron="dns_tunneling",
+                    timestamp=q.get("timestamp", ""),
+                    interpretacion=(
+                        "DNS Tunneling / Data Exfiltration | "
+                        "Unusually long DNS label (>50 chars) containing encoded data payload | "
+                        "Legitimate antivirus update queries, DKIM/SPF DNS records, or cryptographic handshake identifiers"
+                    )
+                ))
+
+    # 2. Query rate per DNS destination
+    queries_per_dst = defaultdict(list)
+    for q in queries:
+        if not q["is_response"]:
+            queries_per_dst[q["dst"]].append(q)
+
+    for dst, qs in queries_per_dst.items():
+        if len(qs) < 10:
+            continue
+
+        timestamps = []
+        for q in qs:
+            try:
+                from datetime import datetime
+                ts = datetime.fromisoformat(q["timestamp"].replace("Z", "+00:00") if q["timestamp"] else "")
+                timestamps.append(ts)
+            except Exception:
+                continue
+
+        if len(timestamps) >= 2:
+            timestamps.sort()
+            span = (timestamps[-1] - timestamps[0]).total_seconds()
+            if span > 0:
+                qps = len(timestamps) / span
+                if qps >= threshold:
+                    findings.append(Finding(
+                        titulo=f"High DNS query rate towards {dst}",
+                        descripcion=(
+                            f"{qps:.1f} queries/second (threshold: {threshold}). "
+                            f"Could indicate DNS tunneling or high-rate exfiltration. "
+                            f"Review manually."
+                        ),
+                        severidad="alto",
+                        confianza=Confianza.MEDIA,
+                        modulo=MODULE_ID,
+                        evidencia=f"{len(qs)} queries in {span:.0f}s",
+                        patron="dns_tunneling",
+                        interpretacion=(
+                            "DNS Tunneling / Exfiltration Rate Anomaly | "
+                            "DNS query rate exceeding 5.0 queries/second to a single resolver destination | "
+                            "Legitimate high-volume recursive resolver traffic, intense web browser prefetching, or local DNS cache misses"
+                        )
+                    ))
+
+    return findings
+
+
+def run(packets, config: dict, console: Console) -> List[Finding]:
+    """Executes DNS analysis."""
+    findings = []
+
+    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+
+    queries = extract_dns_queries(packets)
+
+    if not queries:
+        console.print("  [dim]No DNS packets found in capture.[/]")
+        console.print(pie_modulo())
+        return findings
+
+    # ── Summary ────────────────────────────────────────
+    unique_domains = set(q["name"].lower().rstrip(".") for q in queries)
+    query_only = [q for q in queries if not q["is_response"]]
+    response_only = [q for q in queries if q["is_response"]]
+
+    console.print(f"  DNS Queries:       [bold white]{len(query_only)}[/]")
+    console.print(f"  DNS Responses:     [bold white]{len(response_only)}[/]")
+    console.print(f"  Unique Domains:    [bold white]{len(unique_domains)}[/]")
     console.print()
 
-    # ── Dominios mas consultados ──────────────────────
-    t = theme.tabla("Dominios mas consultados")
-    t.add_column("Dominio", style="bright_cyan", max_width=46)
-    t.add_column("Veces", justify="right", width=7)
-    t.add_column("Entropia", justify="right", width=9)
-    t.add_column("Pedido por", max_width=18)
-    t.add_column("Resuelve a", max_width=20)
+    # ── Most queried domains ───────────────────────────
+    domain_counts = Counter(q["name"].lower().rstrip(".") for q in query_only)
 
-    quien_pide = defaultdict(set)
-    for e in consultas:
-        if e.nombre:
-            quien_pide[e.nombre].add(e.src)
-    resuelve_a = {}
-    for e in respuestas:
-        if e.nombre and e.respuestas:
-            resuelve_a.setdefault(e.nombre, e.respuestas[0])
+    tabla = Table(
+        show_header=True,
+        header_style="tabla_header",
+        box=box.SIMPLE_HEAVY,
+        border_style="tabla_border",
+        padding=(0, 1),
+        title="Most Queried Domains",
+        title_style="bold white",
+    )
+    tabla.add_column("Domain", style="bold cyan", width=40)
+    tabla.add_column("Queries", justify="right", width=10)
+    tabla.add_column("Entropy", justify="right", width=10)
 
-    for dominio, cuenta in dominios.most_common(15):
-        ent = entropia(_etiqueta_significativa(dominio))
-        estilo_ent = "sev_medio" if ent >= UMBRAL_ENTROPIA else "dim_text"
-        pedidores = sorted(quien_pide.get(dominio, set()))
-        t.add_row(
-            theme.esc(truncar(dominio, 44)),
-            str(cuenta),
-            f"[{estilo_ent}]{ent:.2f}[/]",
-            truncar(", ".join(pedidores[:2]), 16) or "—",
-            theme.esc(truncar(resuelve_a.get(dominio, ""), 18)) or "[dim]—[/]",
+    for domain, count in domain_counts.most_common(15):
+        ent = entropy_score(domain)
+        ent_style = "bold yellow" if ent >= ENTROPY_THRESHOLD else "dim"
+        tabla.add_row(
+            domain[:40],
+            f"{count:,}",
+            f"[{ent_style}]{ent:.2f}[/]",
         )
-    console.print(t)
+    console.print(tabla)
     console.print()
 
-    # ── Que pidio cada equipo ─────────────────────────
-    por_host = defaultdict(list)
-    for e in consultas:
-        if e.nombre:
-            por_host[e.src].append(e.nombre)
+    # ── Detection ──────────────────────────────────────
+    dga_findings = detect_dga(queries)
+    findings.extend(dga_findings)
 
-    if len(por_host) > 1:
-        t2 = theme.tabla("Que busco cada equipo")
-        t2.add_column("Equipo", style="bold bright_cyan", no_wrap=True)
-        t2.add_column("Sistema", max_width=20)
-        t2.add_column("Consultas", justify="right", width=10)
-        t2.add_column("Dominios distintos", justify="right", width=18)
-        t2.add_column("Ejemplo", max_width=28)
+    tunnel_findings = detect_tunneling(queries)
+    findings.extend(tunnel_findings)
 
-        for ip, nombres in sorted(por_host.items(), key=lambda x: -len(x[1]))[:10]:
-            perfil = analisis.hosts.get(ip)
-            so = f"{theme.icono_so(perfil.familia)} {perfil.so}" if perfil and perfil.so else "—"
-            unicos = sorted(set(nombres))
-            t2.add_row(ip, truncar(so, 18), str(len(nombres)), str(len(unicos)),
-                       theme.esc(truncar(unicos[0] if unicos else "", 26)))
-        console.print(t2)
+    if findings:
+        console.print()
+        for f in findings:
+            console.print(f"  {estilo_severidad(f.severidad)}  {f.titulo}")
+            console.print(f"      [dim]{f.descripcion}[/]")
+            console.print(f"      [dim]-> {f.evidencia}[/]")
+            console.print(f"      [dim]Review manually.[/]")
+        console.print()
+    else:
+        console.print("  [bold bright_green][OK][/] [dim]No DNS anomalies detected.[/]")
         console.print()
 
-    # ── Hallazgos ─────────────────────────────────────
-    hallazgos.extend(_detectar_dga(analisis, consultas))
-    hallazgos.extend(_detectar_tunel(analisis, consultas))
-    hallazgos.extend(_detectar_nxdomain_masivo(analisis, respuestas))
-    hallazgos.extend(_detectar_tld_riesgo(analisis, consultas))
-    hallazgos.extend(_detectar_transferencia_zona(analisis, consultas))
-
-    for f in hallazgos:
-        console.print(theme.panel_hallazgo(
-            f.titulo, f.severidad, f.descripcion, f.evidencia,
-            f.recomendacion, f.confianza))
-
-    if not hallazgos:
-        console.print(theme.sin_hallazgos("Trafico DNS sin patrones anomalos."))
-
-    console.print(theme.pie_modulo())
-    return hallazgos
-
-
-def _etiqueta_significativa(dominio: str) -> str:
-    """La parte del nombre que aporta informacion (sin TLD ni 'www')."""
-    partes = dominio.rstrip(".").split(".")
-    if len(partes) <= 1:
-        return dominio
-    utiles = [p for p in partes[:-1] if p.lower() != "www"]
-    return ".".join(utiles) or partes[0]
-
-
-def _detectar_dga(analisis, consultas) -> List[Finding]:
-    """Dominios con pinta de generados por algoritmo."""
-    hallazgos = []
-    candidatos = {}
-
-    for e in consultas:
-        nombre = e.nombre
-        if not nombre or DOMINIOS_ENTROPIA_NORMAL.search(nombre):
-            continue
-        registrable = _dominio_registrable(nombre)
-        etiqueta = registrable.split(".")[0]
-        if len(etiqueta) < 8 or registrable in candidatos:
-            continue
-
-        ent = entropia(etiqueta)
-        if ent < UMBRAL_ENTROPIA:
-            continue
-        # Sin vocales o con muchas consonantes seguidas: senal fuerte de DGA.
-        vocales = sum(1 for c in etiqueta.lower() if c in "aeiou")
-        ratio_vocales = vocales / len(etiqueta)
-        digitos = sum(1 for c in etiqueta if c.isdigit()) / len(etiqueta)
-        if ratio_vocales > 0.38 and digitos < 0.2:
-            continue   # se parece demasiado a una palabra
-
-        candidatos[registrable] = (e, ent, ratio_vocales)
-
-    for registrable, (e, ent, ratio) in list(candidatos.items())[:10]:
-        hallazgos.append(Finding(
-            titulo=f"Dominio con aspecto generado por algoritmo: {registrable}",
-            descripcion=(
-                f"Entropia {ent:.2f} (umbral {UMBRAL_ENTROPIA}) y solo un "
-                f"{ratio*100:.0f}% de vocales. Los dominios que registran las "
-                f"personas se pronuncian; los que genera un algoritmo, no. El "
-                f"malware moderno usa dominios generados a diario para que "
-                f"bloquear uno no sirva de nada."
-            ),
-            severidad=Severidad.MEDIO,
-            confianza=Confianza.MEDIA,
-            modulo=MODULE_ID,
-            evidencia=f"{e.nombre} consultado por {e.src} a las {formatear_hora(e.ts)}",
-            recomendacion=(
-                "Comprueba la fecha de registro del dominio (un dominio de hace "
-                "dos dias es mala senal) y busca el proceso que lo resolvio en el "
-                "equipo de origen."
-            ),
-            patron="dga",
-            host=e.src,
-            host_so=analisis.so_de(e.src),
-            timestamp=formatear_hora(e.ts),
-        ))
-    return hallazgos
-
-
-def _detectar_tunel(analisis, consultas) -> List[Finding]:
-    """DNS usado como canal de datos en vez de para resolver nombres."""
-    hallazgos = []
-
-    # 1. Etiquetas largas: los datos van codificados en el subdominio.
-    vistos = set()
-    for e in consultas:
-        nombre = e.nombre
-        if not nombre:
-            continue
-        etiquetas = nombre.split(".")
-        larga = max(etiquetas, key=len) if etiquetas else ""
-        if len(larga) <= LARGO_TUNEL:
-            continue
-        base = _dominio_registrable(nombre)
-        if base in vistos:
-            continue
-        vistos.add(base)
-
-        hallazgos.append(Finding(
-            titulo=f"Posible tunel DNS hacia {base}",
-            descripcion=(
-                f"Una de las etiquetas del nombre mide {len(larga)} caracteres. "
-                f"Los nombres de dominio reales rara vez pasan de 20. Una etiqueta "
-                f"asi de larga suele ser un bloque de datos codificado en Base32 o "
-                f"Base64: es como se saca informacion de una red que solo deja "
-                f"salir DNS."
-            ),
-            severidad=Severidad.ALTO,
-            confianza=Confianza.ALTA if len(larga) > 55 else Confianza.MEDIA,
-            modulo=MODULE_ID,
-            evidencia=f"{truncar(nombre, 90)} (desde {e.src})",
-            recomendacion=(
-                f"Bloquea el dominio {base} en el resolver y busca en el equipo "
-                f"{e.src} el proceso que genera esas consultas. Considera limitar "
-                f"el DNS saliente a tus propios resolvers."
-            ),
-            patron="dns_tunneling",
-            host=e.src,
-            host_so=analisis.so_de(e.src),
-            timestamp=formatear_hora(e.ts),
-        ))
-
-    # 2. Volumen: muchisimas consultas al mismo dominio base.
-    por_base = defaultdict(list)
-    for e in consultas:
-        if e.nombre:
-            por_base[_dominio_registrable(e.nombre)].append(e)
-
-    for base, lista in por_base.items():
-        if len(lista) < MIN_CONSULTAS_TUNEL or base in vistos:
-            continue
-        subdominios = len({x.nombre for x in lista})
-        if subdominios < len(lista) * 0.8:
-            continue     # se repiten: es cache normal, no tunel
-
-        tiempos = sorted(x.ts for x in lista if x.ts)
-        span = (tiempos[-1] - tiempos[0]) if len(tiempos) >= 2 else 0
-        qps = len(lista) / span if span > 0 else 0
-        if span > 0 and qps < QPS_TUNEL:
-            continue
-
-        hallazgos.append(Finding(
-            titulo=f"Volumen anomalo de subdominios bajo {base}",
-            descripcion=(
-                f"{len(lista)} consultas hacia {subdominios} subdominios distintos "
-                f"de {base}" + (f" a {qps:.1f} consultas por segundo" if qps else "")
-                + ". Que casi ninguna se repita significa que el nombre transporta "
-                "datos, no que se este resolviendo un servicio."
-            ),
-            severidad=Severidad.ALTO,
-            confianza=Confianza.MEDIA,
-            modulo=MODULE_ID,
-            evidencia=f"{subdominios} subdominios unicos, "
-                      f"ejemplo: {truncar(lista[0].nombre, 60)}",
-            recomendacion=(
-                f"Bloquea {base} y revisa el equipo {lista[0].src}. Un tunel DNS "
-                f"activo suele significar que ya hay una via de salida abierta."
-            ),
-            patron="dns_tunneling",
-            host=lista[0].src,
-            host_so=analisis.so_de(lista[0].src),
-        ))
-
-    return hallazgos[:8]
-
-
-def _detectar_nxdomain_masivo(analisis, respuestas) -> List[Finding]:
-    """Muchos NXDOMAIN seguidos: malware buscando su servidor de control."""
-    hallazgos = []
-    fallidas = defaultdict(list)
-    for e in respuestas:
-        if e.rcode == "NXDOMAIN":
-            fallidas[e.dst].append(e)
-
-    for ip, lista in fallidas.items():
-        total_de_ese_host = sum(1 for e in respuestas if e.dst == ip)
-        if len(lista) < 15 or not total_de_ese_host:
-            continue
-        ratio = len(lista) / total_de_ese_host
-        if ratio < 0.4:
-            continue
-
-        hallazgos.append(Finding(
-            titulo=f"{ip} recibe muchas resoluciones fallidas ({len(lista)} NXDOMAIN)",
-            descripcion=(
-                f"El {ratio*100:.0f}% de las respuestas DNS que recibe este equipo "
-                f"son 'ese dominio no existe'. Un equipo normal casi siempre acierta. "
-                f"Este patron es tipico del malware con generacion de dominios: "
-                f"prueba nombres hasta que uno responde."
-            ),
-            severidad=Severidad.MEDIO,
-            confianza=Confianza.MEDIA,
-            modulo=MODULE_ID,
-            evidencia=f"{len(lista)} NXDOMAIN de {total_de_ese_host} respuestas · "
-                      f"ejemplo: {truncar(lista[0].nombre, 50)}",
-            recomendacion=(
-                "Lista los dominios fallidos: si no se parecen a nada humano, "
-                "busca el proceso responsable en el equipo."
-            ),
-            patron="dga",
-            host=ip,
-            host_so=analisis.so_de(ip),
-        ))
-    return hallazgos
-
-
-def _detectar_tld_riesgo(analisis, consultas) -> List[Finding]:
-    """TLD gratuitos o baratos muy usados en campanas maliciosas."""
-    hallazgos = []
-    por_tld = defaultdict(set)
-    ejemplo = {}
-    for e in consultas:
-        if not e.nombre or "." not in e.nombre:
-            continue
-        tld = e.nombre.rstrip(".").rsplit(".", 1)[-1].lower()
-        if tld in TLD_RIESGO:
-            por_tld[tld].add(_dominio_registrable(e.nombre))
-            ejemplo.setdefault(tld, e)
-
-    for tld, dominios in por_tld.items():
-        e = ejemplo[tld]
-        hallazgos.append(Finding(
-            titulo=f"Consultas a dominios .{tld} ({len(dominios)} distintos)",
-            descripcion=(
-                f"El TLD .{tld} es gratuito o muy barato y sin apenas verificacion, "
-                f"por eso concentra una proporcion desmesurada de phishing y "
-                f"servidores de control. No es prueba de nada por si solo: hay "
-                f"sitios legitimos usandolo."
-            ),
-            severidad=Severidad.BAJO,
-            confianza=Confianza.BAJA,
-            modulo=MODULE_ID,
-            evidencia=", ".join(sorted(dominios)[:5]),
-            recomendacion=(
-                f"Comprueba si tu organizacion tiene motivo para visitar dominios "
-                f".{tld}. Si no, plantea bloquear el TLD entero en el resolver."
-            ),
-            patron="suspicious_tld",
-            host=e.src,
-            host_so=analisis.so_de(e.src),
-        ))
-    return hallazgos[:4]
-
-
-def _detectar_transferencia_zona(analisis, consultas) -> List[Finding]:
-    """AXFR/IXFR: alguien intentando descargarse la zona DNS entera."""
-    hallazgos = []
-    for e in consultas:
-        if e.tipo not in ("AXFR", "IXFR"):
-            continue
-        hallazgos.append(Finding(
-            titulo=f"Intento de transferencia de zona DNS ({e.tipo})",
-            descripcion=(
-                f"Una consulta {e.tipo} pide al servidor la zona DNS completa: "
-                f"todos los nombres internos, servidores y subredes de golpe. Es "
-                f"uno de los primeros movimientos de un reconocimiento y ningun "
-                f"cliente normal la lanza."
-            ),
-            severidad=Severidad.ALTO,
-            confianza=Confianza.ALTA,
-            modulo=MODULE_ID,
-            evidencia=f"{e.src} → {e.dst} pidiendo {e.tipo} de {e.nombre}",
-            recomendacion=(
-                "Restringe las transferencias de zona a las IPs de tus servidores "
-                "secundarios en la configuracion del DNS."
-            ),
-            patron="zone_transfer",
-            host=e.src,
-            host_so=analisis.so_de(e.src),
-            timestamp=formatear_hora(e.ts),
-        ))
-    return hallazgos[:3]
+    console.print(pie_modulo())
+    return findings

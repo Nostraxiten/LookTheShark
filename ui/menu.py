@@ -1,213 +1,152 @@
 """
-ui/menu.py — Modo interactivo.
+ui/menu.py — Menú interactivo y configuración de LookingTheShark.
 
-Pensado para que alguien que abre la herramienta por primera vez no tenga que
-leerse el --help. Todo tiene un valor por defecto sensato: pulsar Enter en cada
-pregunta produce un analisis completo y correcto.
+Gestiona la selección de herramientas, la carga del archivo pcap,
+y las opciones de exportación en modo interactivo (--menu).
 """
 
-from __future__ import annotations
-
-import glob
 import os
-from typing import List, Optional, Tuple
+import sys
+from typing import Optional
 
 from rich.console import Console
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Prompt, Confirm
+from rich.table import Table
+from rich import box
 
-from core.pcap_reader import es_captura
-from ui import theme
+from ui.theme import SHARK_THEME, ICONOS, SEPARADOR
 
-# El registro de modulos vive en el entrypoint; aqui se replica solo el menu.
+
+# ──────────────────────────────────────────────────────
+# Registro de herramientas (espejo de TOOLS en main)
+# ──────────────────────────────────────────────────────
 MENU_ITEMS = [
-    {"num": "1",  "id": "ip_hosts",   "name": "Equipos",              "desc": "quien hay en la red y con que sistema"},
-    {"num": "2",  "id": "protocols",  "name": "Protocolos",           "desc": "que se habla y cuanto va sin cifrar"},
-    {"num": "3",  "id": "dns",        "name": "DNS",                  "desc": "que nombres se pidieron y cuales no cuadran"},
-    {"num": "4",  "id": "http",       "name": "HTTP",                 "desc": "peticiones y respuestas, con quien las lanzo"},
-    {"num": "5",  "id": "files",      "name": "Ficheros",             "desc": "que se descargo y si era lo que decia ser"},
-    {"num": "6",  "id": "tls",        "name": "TLS y certificados",   "desc": "a donde va el trafico cifrado (JA3)"},
-    {"num": "7",  "id": "creds",      "name": "Credenciales",         "desc": "contrasenas capturadas en claro"},
-    {"num": "8",  "id": "secrets",    "name": "Material sensible",    "desc": "claves y tokens dentro del trafico"},
-    {"num": "9",  "id": "os_fp",      "name": "Sistemas operativos",  "desc": "que es cada equipo y por que"},
-    {"num": "10", "id": "layer2",     "name": "Red local",            "desc": "ARP, DHCP y ataques de capa 2"},
-    {"num": "11", "id": "heuristics", "name": "Comportamiento",       "desc": "escaneos, beaconing, exfiltracion"},
-    {"num": "12", "id": "reputation", "name": "Reputacion offline",   "desc": "cruce con tus listas locales"},
-    {"num": "13", "id": "timeline",   "name": "Cronologia",           "desc": "la captura contada en orden"},
-    {"num": "14", "id": "mitre",      "name": "MITRE ATT&CK",         "desc": "en que fase de un ataque encaja todo"},
+    {"num": "1",  "id": "ip_hosts",     "name": "IP / Hosts"},
+    {"num": "2",  "id": "protocols",    "name": "Protocols"},
+    {"num": "3",  "id": "dns",          "name": "DNS"},
+    {"num": "4",  "id": "files",        "name": "Files / Objects"},
+    {"num": "5",  "id": "os_fp",        "name": "OS Fingerprint"},
+    {"num": "6",  "id": "tls",          "name": "TLS / Certificates"},
+    {"num": "7",  "id": "creds",        "name": "Cleartext Credentials"},
+    {"num": "8",  "id": "layer2",       "name": "Layer 2 / Local Network"},
+    {"num": "9",  "id": "reputation",   "name": "Offline Reputation"},
+    {"num": "10", "id": "heuristics",   "name": "Heuristics (--deep)"},
+    {"num": "11", "id": "mitre",        "name": "MITRE ATT&CK Mapping"},
+    {"num": "12", "id": "diff",         "name": "Diff Between Captures"},
 ]
 
-MODULOS_POR_DEFECTO = [m["id"] for m in MENU_ITEMS]
 
-
-def _limpiar_ruta(texto: str) -> str:
-    """Quita comillas y espacios: al arrastrar un fichero al terminal se cuelan."""
-    return texto.strip().strip('"').strip("'").strip()
-
-
-def _capturas_cercanas(limite: int = 8) -> List[str]:
-    """Busca capturas en el directorio actual y en los sitios habituales."""
-    patrones = ["*.pcap", "*.pcapng", "*.pcap.gz", "*.pcapng.gz", "*.cap"]
-    carpetas = [".", "capturas", "captures", "tests/sample_pcaps",
-                os.path.expanduser("~/Downloads"), os.path.expanduser("~/Descargas")]
-    encontradas: List[str] = []
-    for carpeta in carpetas:
-        if not os.path.isdir(carpeta):
-            continue
-        for patron in patrones:
-            for ruta in sorted(glob.glob(os.path.join(carpeta, patron))):
-                if ruta not in encontradas:
-                    encontradas.append(ruta)
-                if len(encontradas) >= limite:
-                    return encontradas
-    return encontradas
-
-
-def solicitar_archivo(console: Console, titulo: str = "captura") -> Optional[str]:
-    """Pide la ruta del pcap, ofreciendo las capturas que encuentre cerca."""
-    sugerencias = _capturas_cercanas()
-
-    if sugerencias:
-        console.print(f"  [titulo]Capturas encontradas cerca:[/]")
-        console.print()
-        for i, ruta in enumerate(sugerencias, 1):
-            tamano = os.path.getsize(ruta)
-            console.print(f"    [bold bright_cyan][{i}][/] {ruta}  "
-                          f"[dim_text]({tamano:,} bytes)[/]")
-        console.print(f"    [dim_text]o escribe una ruta cualquiera[/]")
-        console.print()
+def solicitar_archivo(console: Console) -> Optional[str]:
+    """Requests the pcap file path from the user."""
+    console.print(f"  {ICONOS['file']} [bold white]Capture file path (.pcap / .pcapng):[/]")
+    console.print()
 
     while True:
         try:
-            respuesta = Prompt.ask(f"  [bold cyan]Ruta de la {titulo}[/]",
-                                   console=console)
+            ruta = Prompt.ask("  [bold cyan]File[/]", console=console)
         except (KeyboardInterrupt, EOFError):
             return None
 
-        respuesta = _limpiar_ruta(respuesta)
-        if not respuesta:
-            console.print("  [advertencia]⚠ No has escrito nada.[/]")
+        ruta = ruta.strip().strip('"').strip("'")
+
+        if not ruta:
+            console.print(f"  {ICONOS['warn']} [bold yellow]Empty path. Please try again.[/]")
             continue
 
-        if respuesta.isdigit() and sugerencias:
-            indice = int(respuesta) - 1
-            if 0 <= indice < len(sugerencias):
-                respuesta = sugerencias[indice]
-
-        if not os.path.isfile(respuesta):
-            console.print(f"  [error]✘ No existe el fichero:[/] {respuesta}")
+        if not os.path.isfile(ruta):
+            console.print(f"  {ICONOS['error']} [bold red]File not found: {ruta}[/]")
             continue
 
-        if not es_captura(respuesta):
-            console.print(f"  [advertencia]⚠ '{os.path.basename(respuesta)}' no "
-                          f"parece un .pcap/.pcapng valido.[/]")
+        ext = os.path.splitext(ruta)[1].lower()
+        if ext not in (".pcap", ".pcapng"):
+            console.print(f"  {ICONOS['warn']} [bold yellow]Unrecognized extension '{ext}'. Expected .pcap or .pcapng.[/]")
             try:
-                if not Confirm.ask("  [dim]¿Intentarlo de todos modos?[/]",
-                                   console=console, default=False):
-                    continue
+                continuar = Confirm.ask("  [dim]Continue anyway?[/]", console=console, default=False)
             except (KeyboardInterrupt, EOFError):
                 return None
+            if not continuar:
+                continue
 
-        console.print(f"  [exito]✔[/] {os.path.basename(respuesta)} "
-                      f"[dim_text]({os.path.getsize(respuesta):,} bytes)[/]")
-        console.print()
-        return respuesta
-
-
-def solicitar_archivo_diff(console: Console) -> Optional[Tuple[str, str]]:
-    console.print("  [titulo]Comparativa entre dos capturas[/]")
-    console.print()
-    primera = solicitar_archivo(console, "captura de REFERENCIA (antes)")
-    if not primera:
-        return None
-    segunda = solicitar_archivo(console, "captura a COMPARAR (despues)")
-    if not segunda:
-        return None
-    return (primera, segunda)
+        console.print(f"  {ICONOS['ok']} File: [bold white]{os.path.basename(ruta)}[/] [dim]({os.path.getsize(ruta):,} bytes)[/]")
+        return ruta
 
 
-def seleccionar_modulos(console: Console) -> Optional[List[str]]:
-    """Menu de modulos. Enter = analisis completo."""
-    console.print("  [titulo]¿Que quieres analizar?[/]")
+def solicitar_archivo_diff(console: Console) -> Optional[tuple]:
+    """Requests two capture paths for comparison."""
+    console.print(f"  {ICONOS['file']} [bold white]Comparison between two captures:[/]")
     console.print()
 
-    mitad = (len(MENU_ITEMS) + 1) // 2
-    izquierda, derecha = MENU_ITEMS[:mitad], MENU_ITEMS[mitad:]
+    rutas = []
+    for label in ["Capture BEFORE", "Capture AFTER"]:
+        try:
+            ruta = Prompt.ask(f"  [bold cyan]{label}[/]", console=console)
+        except (KeyboardInterrupt, EOFError):
+            return None
 
-    for i in range(mitad):
-        linea = _celda(izquierda[i])
-        if i < len(derecha):
-            linea += _celda(derecha[i])
-        console.print(linea)
+        ruta = ruta.strip().strip('"').strip("'")
+        if not os.path.isfile(ruta):
+            console.print(f"  {ICONOS['error']} [bold red]File not found: {ruta}[/]")
+            return None
+        rutas.append(ruta)
 
+    return tuple(rutas)
+
+
+def seleccionar_modulos(console: Console) -> Optional[list]:
+    """
+    Shows tool menu and returns list of selected IDs.
+    """
+    console.print(f"  [bold white]Select tool:[/]")
     console.print()
-    console.print("    [bold cyan][A][/]  [titulo]Todo[/] "
-                  "[dim_text](recomendado — es lo mas rapido y lo mas completo)[/]")
-    console.print("    [bold cyan][R][/]  Solo lo relevante para seguridad "
-                  "[dim_text](sin inventario ni estadisticas)[/]")
-    console.print("    [bold cyan][0][/]  Salir")
-    console.print()
-    console.print("  [dim_text]Puedes combinar: «1,4,7» o «1 4 7».[/]")
+
+    for item in MENU_ITEMS:
+        pad = " " if len(item["num"]) < 2 else ""
+        console.print(f"  [bold cyan] [{item['num']}]{pad}[/] {item['name']}")
+
+    console.print(f"  [bold cyan] [A] [/] Run all")
+    console.print(f"  [bold cyan] [0] [/] Exit and generate report")
     console.print()
 
     try:
-        seleccion = Prompt.ask("  [bold cyan]>[/]", console=console, default="A")
+        seleccion = Prompt.ask("  [bold cyan]>[/]", console=console)
     except (KeyboardInterrupt, EOFError):
         return None
 
     seleccion = seleccion.strip().upper()
+
     if seleccion == "0":
         return None
-    if seleccion in ("A", ""):
-        return list(MODULOS_POR_DEFECTO)
-    if seleccion == "R":
-        return ["http", "files", "creds", "secrets", "tls", "layer2",
-                "heuristics", "reputation", "timeline", "mitre"]
 
-    validos = {m["num"]: m["id"] for m in MENU_ITEMS}
-    elegidos = []
-    for parte in seleccion.replace(",", " ").split():
-        if parte in validos:
-            elegidos.append(validos[parte])
+    if seleccion == "A":
+        return [item["id"] for item in MENU_ITEMS]
+
+    # Parse multi-selection (e.g. "1,3,5" or "1 3 5")
+    nums = seleccion.replace(",", " ").split()
+    ids = []
+    valid_nums = {item["num"]: item["id"] for item in MENU_ITEMS}
+
+    for n in nums:
+        if n in valid_nums:
+            ids.append(valid_nums[n])
         else:
-            console.print(f"  [advertencia]⚠ Opcion '{parte}' ignorada.[/]")
+            console.print(f"  {ICONOS['warn']} [bold yellow]Option '{n}' not recognized, ignored.[/]")
 
-    if not elegidos:
-        console.print("  [error]✘ No seleccionaste ningun modulo.[/]")
+    if not ids:
+        console.print(f"  {ICONOS['error']} [bold red]No module selected.[/]")
         return None
-    return elegidos
 
-
-def _celda(item: dict) -> str:
-    numero = item["num"].rjust(2)
-    return f"    [bold cyan][{numero}][/] {item['name']:<22}"
-
-
-def solicitar_opciones(console: Console) -> dict:
-    """Preguntas rapidas sobre el modo de analisis."""
-    opciones = {}
-    console.print()
-    try:
-        opciones["deep_mode"] = Confirm.ask(
-            "  [bold cyan]¿Activar heuristicas de comportamiento?[/] "
-            "[dim](escaneos, beaconing, exfiltracion)[/]",
-            console=console, default=True)
-        opciones["mitre_mode"] = Confirm.ask(
-            "  [bold cyan]¿Mapear los hallazgos a MITRE ATT&CK?[/]",
-            console=console, default=True)
-    except (KeyboardInterrupt, EOFError):
-        return {"deep_mode": True, "mitre_mode": True}
-    return opciones
+    return ids
 
 
 def solicitar_exportacion(console: Console) -> Optional[str]:
+    """Asks for the report export format."""
     console.print()
-    console.print("  [titulo]¿Generar informe?[/]")
-    console.print("    [bold cyan][1][/] HTML  [dim_text](el mas legible, se abre en el navegador)[/]")
-    console.print("    [bold cyan][2][/] Markdown")
-    console.print("    [bold cyan][3][/] JSON  [dim_text](para procesarlo con otra herramienta)[/]")
-    console.print("    [bold cyan][4][/] CSV   [dim_text](hallazgos para hoja de calculo o SIEM)[/]")
-    console.print("    [bold cyan][5][/] Todos")
-    console.print("    [bold cyan][0][/] No generar informe")
+    console.print(f"  [bold white]Export format:[/]")
+    console.print(f"   [bold cyan][1][/] Markdown (.md)")
+    console.print(f"   [bold cyan][2][/] JSON (.json)")
+    console.print(f"   [bold cyan][3][/] HTML (.html)")
+    console.print(f"   [bold cyan][4][/] All")
+    console.print(f"   [bold cyan][0][/] Do not export")
     console.print()
 
     try:
@@ -215,25 +154,33 @@ def solicitar_exportacion(console: Console) -> Optional[str]:
     except (KeyboardInterrupt, EOFError):
         return None
 
-    return {
-        "1": "html", "2": "md", "3": "json", "4": "csv",
-        "5": "html,md,json,csv", "0": None,
-    }.get(opcion.strip(), "html")
+    mapa = {
+        "1": "md",
+        "2": "json",
+        "3": "html",
+        "4": "md,json,html",
+        "0": None,
+    }
+    return mapa.get(opcion.strip(), "md")
 
 
-def solicitar_ruta_salida(console: Console, formatos: str, base: str) -> str:
-    defecto = f"informe_{base}"
+def solicitar_ruta_salida(console: Console, formatos: str, nombre_base: str) -> str:
+    """Suggests an output path and allows the user to change it."""
+    default = f"report_{nombre_base}"
+    console.print(f"  [dim]Report base name (without extension):[/]")
+
     try:
-        nombre = Prompt.ask("  [bold cyan]Nombre del informe[/] [dim](sin extension)[/]",
-                            console=console, default=defecto)
+        nombre = Prompt.ask("  [bold cyan]Report[/]", console=console, default=default)
     except (KeyboardInterrupt, EOFError):
-        return defecto
-    return _limpiar_ruta(nombre) or defecto
+        nombre = default
+
+    return nombre.strip()
 
 
 def mostrar_resumen_captura(console: Console, info: dict) -> None:
+    """Displays loaded capture information."""
     console.print(
-        f"  [marca]🦈[/] [titulo]{info.get('nombre', '?')}[/] "
-        f"[dim_text]· {info.get('paquetes', 0):,} paquetes · "
-        f"{info.get('duracion', '?')}[/]"
+        f"  {ICONOS['shark']} Loaded capture: [bold white]{info.get('nombre', '?')}[/] "
+        f"[dim]({info.get('paquetes', '?')} packets, {info.get('duracion', '?')})[/]"
     )
+    console.print()

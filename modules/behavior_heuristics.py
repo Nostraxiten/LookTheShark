@@ -1,393 +1,224 @@
 """
-modules/behavior_heuristics.py — Comportamientos, no firmas.
+modules/behavior_heuristics.py — §3.6 Módulo Heurísticas (--deep).
 
-Las firmas detectan lo que ya se conoce. Estas heuristicas detectan la FORMA de
-lo que esta pasando, que es mucho mas dificil de cambiar para quien ataca:
-
-  escaneo       un origen tocando muchos puertos o muchos equipos en poco tiempo
-  beaconing     conexiones al mismo destino con una regularidad de reloj
-  exfiltracion  un equipo interno subiendo mucho mas de lo que baja
-  horario raro  actividad concentrada fuera de la jornada
-  fallos        muchas conexiones rechazadas o sin respuesta
-
-Todas necesitan interpretacion: un servidor de copias tambien sube mucho de
-madrugada. Por eso cada hallazgo dice que lo explicaria de forma legitima.
+Detecta escaneo de puertos, beaconing, transferencias masivas y anomalías de comportamiento.
 """
 
-from __future__ import annotations
-
-import statistics
-from collections import Counter, defaultdict
-from datetime import datetime
+from collections import defaultdict
 from typing import List
+from datetime import datetime
 
 from rich.console import Console
 
-from core import services
-from modules import (Confianza, Finding, Severidad, es_ip_privada,
-                     formatear_bytes, formatear_duracion, formatear_hora,
-                     plural, truncar)
-from ui import theme
-
-MODULE_NUM = 11
-MODULE_NAME = "Comportamiento"
-MODULE_ID = "heuristics"
-MODULE_DESC = "Escaneos, beaconing, exfiltracion y ritmos que no cuadran"
-
-# Umbrales por defecto; se pueden ajustar desde la configuracion.
-PUERTOS_ESCANEO = 15
-EQUIPOS_BARRIDO = 12
-MIN_BEACONS = 6
-DESVIACION_BEACON = 0.15      # coeficiente de variacion maximo
-BYTES_EXFILTRACION = 5 * 1024 * 1024
-RATIO_SUBIDA = 3.0
+from modules import Finding, Confianza, safe_get_attr, safe_int, formatear_bytes
+from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
 
 
-def run(analisis, config: dict, console: Console) -> List[Finding]:
-    hallazgos: List[Finding] = []
-    console.print(theme.cabecera_modulo(MODULE_NUM, MODULE_NAME, MODULE_DESC))
+MODULE_NUM  = 10
+MODULE_NAME = "Heuristics (--deep)"
+MODULE_ID   = "heuristics"
+
+
+def _parse_time(sniff_time):
+    """Converts sniff_time to datetime or returns None."""
+    try:
+        return datetime.fromisoformat(str(sniff_time).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def detect_portscan(packets, window_seconds: float = 2.0, port_threshold: int = 15) -> List[Finding]:
+    """Detects port scanning: multiple distinct destination IP:port from one source in short time."""
+    findings = []
+    
+    # src_ip -> { dst_ip -> set(dst_ports) }
+    scans = defaultdict(lambda: {"ports": set(), "first": None, "last": None, "targets": set()})
+    
+    for pkt in packets:
+        src = safe_get_attr(pkt, "ip", "src")
+        dst = safe_get_attr(pkt, "ip", "dst")
+        if not src or not dst:
+            continue
+            
+        dst_port = None
+        if hasattr(pkt, "tcp"):
+            dst_port = safe_int(safe_get_attr(pkt, "tcp", "dstport"))
+        elif hasattr(pkt, "udp"):
+            dst_port = safe_int(safe_get_attr(pkt, "udp", "dstport"))
+            
+        if dst_port is not None:
+            ts = _parse_time(getattr(pkt, "sniff_time", ""))
+            
+            s = scans[src]
+            s["ports"].add(dst_port)
+            s["targets"].add(dst)
+            if ts:
+                if not s["first"] or ts < s["first"]: s["first"] = ts
+                if not s["last"] or ts > s["last"]: s["last"] = ts
+
+    for src, data in scans.items():
+        if len(data["ports"]) >= port_threshold:
+            duration = (data["last"] - data["first"]).total_seconds() if data["last"] and data["first"] else 0.0
+            if duration <= window_seconds or (duration > 0 and window_seconds > 0 and len(data["ports"]) / (duration or 1.0) > (port_threshold / (window_seconds or 1.0))):
+                findings.append(Finding(
+                    titulo=f"Possible port scan from {src}",
+                    descripcion=(
+                        f"Detected connections to {len(data['ports'])} distinct ports "
+                        f"across {len(data['targets'])} destination host(s) in {duration:.1f} seconds. "
+                        f"Review manually."
+                    ),
+                    severidad="alto",
+                    confianza=Confianza.MEDIA if duration > 5 else Confianza.ALTA,
+                    modulo=MODULE_ID,
+                    evidencia=f"Source: {src}, {len(data['ports'])} ports",
+                    patron="portscan",
+                    interpretacion=(
+                        "Network Service Discovery / Port Scanning | "
+                        "Rapid SYN/UDP connection attempts to multiple distinct destination ports from a single source host | "
+                        "Legitimate vulnerability scanning tools, network inventory discovery, or monitoring services"
+                    )
+                ))
+                
+    return findings
+
+
+def detect_beaconing(packets, max_variance: float = 0.1, min_connections: int = 10) -> List[Finding]:
+    """Detects beaconing (C2): connections to same destination at regular intervals."""
+    findings = []
+    
+    # pair (src, dst, dstport) -> list(timestamps)
+    conns = defaultdict(list)
+    
+    for pkt in packets:
+        if not hasattr(pkt, "tcp"): continue
+        
+        # Only SYN flags
+        flags = safe_get_attr(pkt, "tcp", "flags")
+        try:
+            if int(flags, 16) != 2: continue
+        except Exception:
+            continue
+            
+        src = safe_get_attr(pkt, "ip", "src")
+        dst = safe_get_attr(pkt, "ip", "dst")
+        dport = safe_get_attr(pkt, "tcp", "dstport")
+        ts = _parse_time(getattr(pkt, "sniff_time", ""))
+        
+        if src and dst and ts:
+            conns[(src, dst, dport)].append(ts)
+            
+    for (src, dst, dport), times in conns.items():
+        if len(times) < min_connections:
+            continue
+            
+        times.sort()
+        intervals = [(times[i] - times[i-1]).total_seconds() for i in range(1, len(times))]
+        
+        if intervals:
+            avg_interval = sum(intervals) / len(intervals)
+            if avg_interval > 0:
+                # Check variance
+                regular_count = sum(1 for i in intervals if abs(i - avg_interval) / avg_interval <= max_variance)
+                
+                if regular_count / len(intervals) > 0.8:
+                    findings.append(Finding(
+                        titulo=f"Beaconing pattern detected towards {dst}:{dport}",
+                        descripcion=(
+                            f"Detected {len(times)} regular connections "
+                            f"every ~{avg_interval:.1f} seconds. Typical Command and Control (C2) behavior. "
+                            f"Review manually."
+                        ),
+                        severidad="critico",
+                        confianza=Confianza.ALTA,
+                        modulo=MODULE_ID,
+                        evidencia=f"{src} -> {dst}:{dport} ({len(times)} times)",
+                        patron="beaconing",
+                        interpretacion=(
+                            "Command and Control (C2) Beaconing | "
+                            "Periodic heartbeat connections with low time variance to a fixed destination IP and port | "
+                            "Legitimate NTP synchronization, cloud telemetry, software update checks, or monitoring agents"
+                        )
+                    ))
+                    
+    return findings
+
+
+def detect_exfiltration(packets, bytes_threshold: int = 10 * 1024 * 1024) -> List[Finding]:
+    """Detects exfiltration or massive transfers (>10MB)."""
+    findings = []
+    
+    # pair (src, dst) -> bytes_sent
+    flows = defaultdict(int)
+    
+    for pkt in packets:
+        src = safe_get_attr(pkt, "ip", "src")
+        dst = safe_get_attr(pkt, "ip", "dst")
+        length = safe_int(safe_get_attr(pkt, "ip", "len"))
+        if src and dst:
+            flows[(src, dst)] += length
+            
+    for (src, dst), total_bytes in flows.items():
+        if total_bytes > bytes_threshold:
+            findings.append(Finding(
+                titulo=f"Massive data transfer: {src} -> {dst}",
+                descripcion=(
+                    f"Transferred {formatear_bytes(total_bytes)} between these hosts. "
+                    f"If the destination is external or unexpected, this could indicate data exfiltration. "
+                    f"Review manually."
+                ),
+                severidad="medio",
+                confianza=Confianza.ALTA,
+                modulo=MODULE_ID,
+                evidencia=f"{formatear_bytes(total_bytes)} sent",
+                patron="exfiltration",
+                interpretacion=(
+                    "Data Exfiltration Over Alternative Protocol | "
+                    "Outbound data volume exceeding 10MB threshold between two endpoints | "
+                    "Legitimate file backups, OS updates, media streaming, or large software downloads"
+                )
+            ))
+            
+    return findings
+
+
+def run(packets, config: dict, console: Console) -> List[Finding]:
+    """Executes behavioral heuristics."""
+    findings = []
+    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
 
     if not config.get("deep_mode", False):
-        console.print("  [dim_text]Heuristicas desactivadas. Anade [/]"
-                      "[dato]--deep[/][dim_text] para activarlas.[/]")
-        console.print("  [dim_text]Cuestan una fraccion de segundo: el analisis ya "
-                      "esta hecho, solo se interpreta.[/]")
-        console.print(theme.pie_modulo())
-        return hallazgos
+        console.print("  [dim]Advanced heuristics are disabled.[/]")
+        console.print("  [dim]Run with --deep to enable them.[/]")
+        console.print(pie_modulo())
+        return findings
 
-    hallazgos.extend(_escaneo_puertos(analisis, config))
-    hallazgos.extend(_barrido_red(analisis))
-    hallazgos.extend(_beaconing(analisis, config))
-    hallazgos.extend(_exfiltracion(analisis, config))
-    hallazgos.extend(_conexiones_fallidas(analisis))
-    hallazgos.extend(_horario_anomalo(analisis))
+    # Whitelist
+    whitelist = set(config.get("whitelist_ips", []))
+    
+    heuristic_packets = []
+    for pkt in packets:
+        src = safe_get_attr(pkt, "ip", "src")
+        if src not in whitelist:
+            heuristic_packets.append(pkt)
 
-    hallazgos.sort(key=lambda f: f.peso)
-
-    if hallazgos:
-        console.print(f"  [sev_alto]{plural(len(hallazgos), 'comportamiento anomalo detectado', 'comportamientos anomalos detectados')}[/]")
+    console.print("  [dim]Analyzing network behavior...[/]")
+    
+    portscan = detect_portscan(heuristic_packets)
+    beaconing = detect_beaconing(heuristic_packets)
+    exfil = detect_exfiltration(heuristic_packets)
+    
+    findings.extend(portscan)
+    findings.extend(beaconing)
+    findings.extend(exfil)
+    
+    if findings:
+        for f in findings:
+            console.print(f"  {estilo_severidad(f.severidad)}  {f.titulo}")
+            console.print(f"      [dim]{f.descripcion}[/]")
         console.print()
-        for f in hallazgos:
-            console.print(theme.panel_hallazgo(
-                f.titulo, f.severidad, f.descripcion, f.evidencia,
-                f.recomendacion, f.confianza))
     else:
-        console.print(theme.sin_hallazgos(
-            "Ningun patron de escaneo, beaconing ni exfiltracion en esta captura."))
+        console.print("  [bold bright_green][OK][/] [dim]No anomalous behaviors detected (scans, beaconing, exfil).[/]")
+        console.print()
 
-    console.print(theme.pie_modulo())
-    return hallazgos
-
-
-def _escaneo_puertos(analisis, config) -> List[Finding]:
-    """Un origen tocando muchos puertos del mismo destino."""
-    hallazgos = []
-    umbral = int(config.get("umbral_escaneo", PUERTOS_ESCANEO))
-
-    for origen, destinos in analisis.syn_por_origen.items():
-        for destino, puertos in destinos.items():
-            if len(puertos) < umbral:
-                continue
-
-            # Cuanto duro: un escaneo se hace en segundos, no en horas.
-            tiempos = []
-            for (o, d, p), ts_lista in analisis.conexiones_ts.items():
-                if o == origen and d == destino:
-                    tiempos.extend(ts_lista)
-            span = (max(tiempos) - min(tiempos)) if len(tiempos) >= 2 else 0.0
-            velocidad = len(puertos) / span if span > 0 else float(len(puertos))
-
-            rechazos = analisis.rst_por_destino.get(origen, 0)
-            perfil = analisis.hosts.get(origen)
-            cerrados = sum(1 for f in analisis.flujos
-                           if f.cliente_ip == origen and f.servidor_ip == destino
-                           and (f.rechazado or f.sin_respuesta))
-
-            confianza = (Confianza.ALTA if (span < 10 or cerrados > umbral * 0.5)
-                         else Confianza.MEDIA)
-            interesantes = sorted(p for p in puertos if p in services.SERVICIOS)[:8]
-
-            hallazgos.append(Finding(
-                titulo=f"Escaneo de puertos: {origen} → {destino} "
-                       f"({len(puertos)} puertos)",
-                descripcion=(
-                    f"Se enviaron SYN a {len(puertos)} puertos distintos de "
-                    f"{destino}"
-                    + (f" en {formatear_duracion(span)} ({velocidad:.1f} puertos/s)"
-                       if span > 0 else " practicamente a la vez") + ". "
-                    + (f"{cerrados} conexiones fueron rechazadas o quedaron sin "
-                       f"respuesta, que es exactamente lo que produce un escaneo: "
-                       f"casi todos los puertos estan cerrados. " if cerrados else "")
-                    + (f"El origen tiene huella de {perfil.so}. "
-                       if perfil and perfil.familia == "Escaner" else "")
-                    + "Lo unico que lo explicaria de forma legitima es un inventario "
-                      "de seguridad autorizado o una herramienta de monitorizacion."
-                ),
-                severidad=Severidad.ALTO,
-                confianza=confianza,
-                modulo=MODULE_ID,
-                evidencia=(f"{origen} → {destino}, puertos incluyendo "
-                           + ", ".join(f"{p}/{services.servicio(p)}" for p in interesantes)),
-                recomendacion=(
-                    "Comprueba si el escaneo estaba autorizado y anotado. Si no, "
-                    "bloquea el origen y revisa que puertos respondieron: son los "
-                    "que el atacante intentara despues."
-                ),
-                patron="portscan",
-                host=origen,
-                host_so=perfil.so if perfil else "",
-                datos={"puertos": sorted(puertos)[:60], "destino": destino},
-            ))
-    return hallazgos[:8]
-
-
-def _barrido_red(analisis) -> List[Finding]:
-    """Un origen tocando el mismo puerto en muchos equipos: busca victimas."""
-    hallazgos = []
-    for origen, destinos in analisis.syn_por_origen.items():
-        if len(destinos) < EQUIPOS_BARRIDO:
-            continue
-
-        puertos_comunes = Counter()
-        for puertos in destinos.values():
-            puertos_comunes.update(puertos)
-        objetivo, veces = puertos_comunes.most_common(1)[0]
-        if veces < EQUIPOS_BARRIDO:
-            continue
-
-        perfil = analisis.hosts.get(origen)
-        hallazgos.append(Finding(
-            titulo=f"Barrido de red desde {origen}: puerto {objetivo} en "
-                   f"{veces} equipos",
-            descripcion=(
-                f"El mismo puerto ({objetivo}/{services.servicio(objetivo)}) se "
-                f"probo en {veces} equipos distintos. Eso no es navegar: es buscar "
-                f"todos los equipos de la red que ofrecen ese servicio. Es el paso "
-                f"previo tipico de un movimiento lateral o de la propagacion de un "
-                f"gusano — SMB (445) y RDP (3389) son los objetivos habituales."
-            ),
-            severidad=Severidad.ALTO,
-            confianza=Confianza.ALTA,
-            modulo=MODULE_ID,
-            evidencia=f"{origen} contacto {len(destinos)} equipos; "
-                      f"{services.servicio(objetivo)} en {veces} de ellos",
-            recomendacion=(
-                "Aisla el equipo de origen: si esta comprometido, cada minuto que "
-                "pasa es un equipo mas. Revisa que equipos respondieron al puerto "
-                f"{objetivo} y parchea ese servicio."
-            ),
-            patron="network_sweep",
-            host=origen,
-            host_so=perfil.so if perfil else "",
-            datos={"puerto": objetivo, "equipos": veces},
-        ))
-    return hallazgos[:5]
-
-
-def _beaconing(analisis, config) -> List[Finding]:
-    """Conexiones repetidas con intervalo casi constante: un agente llamando a casa."""
-    hallazgos = []
-    minimo = int(config.get("min_beacons", MIN_BEACONS))
-
-    for (origen, destino, puerto), tiempos in analisis.conexiones_ts.items():
-        if len(tiempos) < minimo:
-            continue
-        tiempos = sorted(tiempos)
-        intervalos = [tiempos[i] - tiempos[i - 1] for i in range(1, len(tiempos))]
-        intervalos = [i for i in intervalos if i > 0.05]
-        if len(intervalos) < minimo - 1:
-            continue
-
-        media = statistics.fmean(intervalos)
-        if media < 1.0:
-            continue      # rafaga, no latido
-        desviacion = statistics.pstdev(intervalos) if len(intervalos) > 1 else 0.0
-        coeficiente = desviacion / media if media else 1.0
-        if coeficiente > DESVIACION_BEACON:
-            continue
-
-        externo = not es_ip_privada(destino)
-        perfil = analisis.hosts.get(origen)
-        dominio = ""
-        for s in analisis.tls:
-            if s.servidor_ip == destino and s.sni:
-                dominio = s.sni
-                break
-
-        hallazgos.append(Finding(
-            titulo=f"Beaconing hacia {dominio or destino}:{puerto} "
-                   f"cada ~{media:.0f} s",
-            descripcion=(
-                f"{len(tiempos)} conexiones desde {origen} hacia {destino}:{puerto} "
-                f"separadas por {media:.1f} segundos con una variacion de solo "
-                f"{coeficiente*100:.1f}%. Una persona no genera ese ritmo; un "
-                f"programa que pregunta «¿hay ordenes?» a intervalo fijo, si. Es la "
-                f"firma de un agente de control remoto."
-                + (" El destino esta en Internet, lo que refuerza la hipotesis."
-                   if externo else
-                   " El destino es interno: podria ser tambien un agente de "
-                   "monitorizacion o de inventario legitimo.")
-            ),
-            severidad=Severidad.CRITICO if externo else Severidad.MEDIO,
-            confianza=Confianza.ALTA if coeficiente < 0.08 else Confianza.MEDIA,
-            modulo=MODULE_ID,
-            evidencia=(f"{len(tiempos)} conexiones entre "
-                       f"{formatear_hora(tiempos[0])} y {formatear_hora(tiempos[-1])}, "
-                       f"intervalo {media:.1f}±{desviacion:.1f} s"),
-            recomendacion=(
-                f"Identifica el proceso que abre esas conexiones en {origen}. "
-                f"Bloquea {destino} en el perimetro mientras investigas. Comprueba "
-                f"si alguna herramienta de gestion tuya usa ese intervalo antes de "
-                f"dar por hecho que es malicioso."
-            ),
-            patron="beaconing",
-            host=origen,
-            host_so=perfil.so if perfil else "",
-            timestamp=formatear_hora(tiempos[0]),
-            datos={"destino": destino, "puerto": puerto,
-                   "intervalo": round(media, 2), "conexiones": len(tiempos)},
-        ))
-    return sorted(hallazgos, key=lambda f: f.peso)[:8]
-
-
-def _exfiltracion(analisis, config) -> List[Finding]:
-    """Un equipo interno que sube mucho mas de lo que baja."""
-    hallazgos = []
-    umbral = int(config.get("umbral_exfiltracion", BYTES_EXFILTRACION))
-
-    for (origen, destino), enviados in analisis.bytes_por_flujo.items():
-        if enviados < umbral:
-            continue
-        if not es_ip_privada(origen) or es_ip_privada(destino):
-            continue        # solo interesa lo que sale de dentro hacia fuera
-
-        recibidos = analisis.bytes_por_flujo.get((destino, origen), 0)
-        ratio = enviados / recibidos if recibidos else float("inf")
-        if ratio < RATIO_SUBIDA:
-            continue        # descarga normal: se recibe mas de lo que se manda
-
-        perfil = analisis.hosts.get(origen)
-        dominio = next((s.sni for s in analisis.tls
-                        if s.servidor_ip == destino and s.sni), "")
-
-        hallazgos.append(Finding(
-            titulo=f"Salida masiva de datos: {origen} → {dominio or destino} "
-                   f"({formatear_bytes(enviados)})",
-            descripcion=(
-                f"El equipo interno {origen} envio {formatear_bytes(enviados)} hacia "
-                f"{destino} y solo recibio {formatear_bytes(recibidos)}. La relacion "
-                f"normal es la contraria: se descarga mucho mas de lo que se sube. "
-                f"Una proporcion de {ratio:.0f} a 1 hacia fuera es lo que produce "
-                f"una copia de datos saliendo de la organizacion."
-                + (" Puede ser tambien una copia de seguridad en la nube o una "
-                   "sincronizacion de ficheros legitima." )
-            ),
-            severidad=Severidad.ALTO,
-            confianza=Confianza.MEDIA,
-            modulo=MODULE_ID,
-            evidencia=(f"{formatear_bytes(enviados)} enviados / "
-                       f"{formatear_bytes(recibidos)} recibidos"
-                       + (f" · destino {dominio}" if dominio else "")),
-            recomendacion=(
-                f"Averigua a quien pertenece {destino} y que proceso en {origen} "
-                f"esta subiendo. Si no es un servicio aprobado, corta la conexion y "
-                f"trata el equipo como comprometido."
-            ),
-            patron="exfiltration",
-            host=origen,
-            host_so=perfil.so if perfil else "",
-            datos={"destino": destino, "enviados": enviados, "recibidos": recibidos},
-        ))
-    return sorted(hallazgos, key=lambda f: -f.datos.get("enviados", 0))[:6]
-
-
-def _conexiones_fallidas(analisis) -> List[Finding]:
-    """Muchos intentos que no llegan a establecerse."""
-    hallazgos = []
-    por_origen = defaultdict(lambda: {"total": 0, "fallidos": 0, "destinos": set()})
-
-    for flujo in analisis.flujos:
-        datos = por_origen[flujo.cliente_ip]
-        datos["total"] += 1
-        if flujo.rechazado or flujo.sin_respuesta:
-            datos["fallidos"] += 1
-            datos["destinos"].add(f"{flujo.servidor_ip}:{flujo.servidor_puerto}")
-
-    for origen, datos in por_origen.items():
-        if datos["total"] < 20 or datos["fallidos"] < 15:
-            continue
-        ratio = datos["fallidos"] / datos["total"]
-        if ratio < 0.6:
-            continue
-        # Si ya lo hemos reportado como escaneo, no repetir.
-        if len(analisis.syn_por_origen.get(origen, {})) > 1 and any(
-                len(p) >= PUERTOS_ESCANEO
-                for p in analisis.syn_por_origen[origen].values()):
-            continue
-
-        hallazgos.append(Finding(
-            titulo=f"{origen}: {ratio*100:.0f}% de sus conexiones no se establecen",
-            descripcion=(
-                f"{datos['fallidos']} de {datos['total']} intentos terminaron en "
-                f"rechazo o sin respuesta. Un equipo sano acierta casi siempre. Este "
-                f"patron aparece cuando un programa busca a ciegas servicios que no "
-                f"existen, o cuando intenta salir a destinos que el firewall bloquea."
-            ),
-            severidad=Severidad.MEDIO,
-            confianza=Confianza.MEDIA,
-            modulo=MODULE_ID,
-            evidencia=f"Destinos fallidos: "
-                      + ", ".join(sorted(datos["destinos"])[:5]),
-            recomendacion=(
-                "Mira que destinos son. Si son IPs externas concretas, puede ser un "
-                "agente intentando alcanzar su servidor de control con el firewall "
-                "haciendo su trabajo."
-            ),
-            patron="failed_connections",
-            host=origen,
-            host_so=analisis.so_de(origen),
-        ))
-    return hallazgos[:5]
-
-
-def _horario_anomalo(analisis) -> List[Finding]:
-    """Actividad concentrada en horas en las que no deberia haber nadie."""
-    hallazgos = []
-    if analisis.duracion < 3600 or not analisis.actividad:
-        return hallazgos
-
-    por_hora = Counter()
-    for segundo, cuenta in analisis.actividad.items():
-        try:
-            por_hora[datetime.fromtimestamp(segundo).hour] += cuenta
-        except (OSError, ValueError, OverflowError):
-            continue
-
-    total = sum(por_hora.values()) or 1
-    nocturno = sum(c for h, c in por_hora.items() if h < 6 or h >= 22)
-    ratio = nocturno / total
-    if ratio < 0.5 or nocturno < 500:
-        return hallazgos
-
-    horas_pico = ", ".join(f"{h:02d}:00 ({c:,} pkts)"
-                           for h, c in por_hora.most_common(3))
-    hallazgos.append(Finding(
-        titulo=f"El {ratio*100:.0f}% del trafico ocurre fuera del horario laboral",
-        descripcion=(
-            "La mayor parte de la actividad se concentra entre las 22:00 y las "
-            "06:00. En una red de oficina eso deberia ser un valle, no un pico. "
-            "Puede ser perfectamente normal (copias de seguridad, actualizaciones "
-            "programadas, servidores) pero si la captura es de puestos de trabajo, "
-            "alguien o algo esta trabajando cuando no deberia haber nadie."
-        ),
-        severidad=Severidad.BAJO,
-        confianza=Confianza.BAJA,
-        modulo=MODULE_ID,
-        evidencia=f"Horas con mas trafico: {horas_pico}",
-        recomendacion=(
-            "Contrasta con las tareas programadas de la organizacion. Lo que no "
-            "cuadre con una tarea conocida, investigalo equipo por equipo."
-        ),
-        patron="odd_hours",
-    ))
-    return hallazgos
+    console.print(pie_modulo())
+    return findings

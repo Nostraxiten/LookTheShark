@@ -1,207 +1,236 @@
 """
-modules/diff_engine.py — Comparar dos capturas.
+modules/diff_engine.py — §3.13 Capture Diff / Comparison Module.
 
-Responde a "¿que ha cambiado?". Sirve para tres casos concretos:
-  - antes y despues de aplicar una regla de firewall: ¿de verdad corta lo que
-    tenia que cortar y nada mas?
-  - antes y despues de un incidente: ¿que apareció que antes no estaba?
-  - dos equipos que deberian comportarse igual: ¿por que uno hace algo raro?
-
-Compara perfiles completos, no solo IPs: tambien equipos, sistemas operativos,
-dominios, ficheros y hallazgos.
+Compares two captures (before/after an incident or rule change)
+and displays only what changed. This module operates independently
+of the standard single-pcap analysis flow.
 """
 
-from __future__ import annotations
-
-from typing import List
+from collections import Counter
 
 from rich.console import Console
+from rich.table import Table
 
-from core import services
-from core.session import Analisis
-from modules import (Finding, formatear_bytes, formatear_duracion, plural,
-                     truncar)
-from ui import theme
-
-MODULE_NUM = 15
-MODULE_NAME = "Comparativa"
-MODULE_ID = "diff"
-MODULE_DESC = "Que aparece, que desaparece y que cambia entre dos capturas"
+from modules import safe_get_attr, safe_int
+from ui.theme import cabecera_modulo, pie_modulo
 
 
-def _perfil(analisis: Analisis) -> dict:
-    """Resume una captura en conjuntos comparables."""
-    return {
-        "hosts": set(analisis.hosts),
-        "puertos": {p for p in analisis.puertos_destino if not services.es_efimero(p)},
-        "protocolos": set(analisis.protocolos_app),
-        "flujos": {(f.cliente_ip, f.servidor_ip, f.servidor_puerto)
-                   for f in analisis.flujos},
-        "dominios": {e.nombre.lower() for e in analisis.dns if e.nombre},
-        "sni": {s.sni.lower() for s in analisis.tls if s.sni},
-        "so": {ip: h.so for ip, h in analisis.hosts.items() if h.so},
-        "ficheros": {f.sha256 for f in analisis.ficheros if f.sha256},
-        "nombres_fichero": {f.sha256: f.nombre for f in analisis.ficheros if f.sha256},
+MODULE_NUM  = 12
+MODULE_NAME = "Capture Diff"
+MODULE_ID   = "diff"
+
+
+# ─────────────────────────────────────────────────────────
+# Internal helpers
+# ─────────────────────────────────────────────────────────
+
+def _extract_profile(packets) -> dict:
+    """Build a quick network profile from a capture (IPs, ports, protocols, flows).
+
+    Returns a dict with:
+        ips       - set of all unique IP addresses (src + dst)
+        ports     - set of all unique destination ports (TCP/UDP)
+        protocols - set of highest-layer protocol names
+        flows     - set of (src_ip, dst_ip, dst_port) tuples
+        proto_counts - Counter of protocols for volume comparison
+        port_counts  - Counter of dst ports for volume comparison
+    """
+    profile: dict = {
+        "ips":          set(),
+        "ports":        set(),
+        "protocols":    set(),
+        "flows":        set(),
+        "proto_counts": Counter(),
+        "port_counts":  Counter(),
+        "total":        0,
     }
 
+    for pkt in packets:
+        profile["total"] += 1
 
-def _bloque(console: Console, titulo: str, elementos, color: str,
-            maximo: int = 15, formato=str) -> None:
-    if not elementos:
-        return
-    elementos = sorted(elementos, key=lambda x: str(x))
-    console.print(f"  [{color}]{titulo} ({len(elementos)})[/]")
-    for e in elementos[:maximo]:
-        console.print(f"      {formato(e)}")
-    if len(elementos) > maximo:
-        console.print(f"      [dim_text]… y {len(elementos) - maximo} mas[/]")
-    console.print()
+        src = safe_get_attr(pkt, "ip", "src")
+        dst = safe_get_attr(pkt, "ip", "dst")
+
+        if src:
+            profile["ips"].add(src)
+        if dst:
+            profile["ips"].add(dst)
+
+        try:
+            layer = pkt.highest_layer
+            profile["protocols"].add(layer)
+            profile["proto_counts"][layer] += 1
+        except Exception:
+            pass
+
+        dport = None
+        if hasattr(pkt, "tcp"):
+            dport = safe_int(safe_get_attr(pkt, "tcp", "dstport")) or None
+        elif hasattr(pkt, "udp"):
+            dport = safe_int(safe_get_attr(pkt, "udp", "dstport")) or None
+
+        if dport:
+            profile["ports"].add(dport)
+            profile["port_counts"][dport] += 1
+            if src and dst:
+                profile["flows"].add((src, dst, dport))
+
+    return profile
 
 
-def run(analisis_a: Analisis, analisis_b: Analisis, config: dict,
-        console: Console) -> List[Finding]:
-    hallazgos: List[Finding] = []
-    console.print(theme.cabecera_modulo(MODULE_NUM, MODULE_NAME, MODULE_DESC))
+def _pct_change(a: int, b: int) -> str:
+    """Return a formatted percentage change string from a to b."""
+    if a == 0:
+        return "+inf%" if b > 0 else "0%"
+    delta = ((b - a) / a) * 100
+    sign  = "+" if delta >= 0 else ""
+    return f"{sign}{delta:.0f}%"
 
-    a, b = _perfil(analisis_a), _perfil(analisis_b)
 
-    # ── Comparativa de cifras ─────────────────────────
-    t = theme.tabla("Las dos capturas en cifras")
-    t.add_column("", style="etiqueta", justify="right", width=22)
-    t.add_column(truncar(analisis_a.nombre, 26), justify="right", width=20)
-    t.add_column(truncar(analisis_b.nombre, 26), justify="right", width=20)
-    t.add_column("Cambio", justify="right", width=14)
-
-    def fila(nombre, va, vb, formateador=str):
-        if isinstance(va, (int, float)) and isinstance(vb, (int, float)):
-            delta = vb - va
-            signo = "+" if delta > 0 else ""
-            estilo = "exito" if delta == 0 else ("sev_medio" if delta > 0 else "dato")
-            cambio = f"[{estilo}]{signo}{formateador(delta) if delta else '='}[/]"
-        else:
-            cambio = ""
-        t.add_row(nombre, formateador(va), formateador(vb), cambio)
-
-    fila("Paquetes", analisis_a.total_paquetes, analisis_b.total_paquetes,
-         lambda n: f"{n:,}")
-    fila("Duracion", analisis_a.duracion, analisis_b.duracion, formatear_duracion)
-    fila("Volumen", analisis_a.bytes_totales, analisis_b.bytes_totales, formatear_bytes)
-    fila("Equipos", len(a["hosts"]), len(b["hosts"]))
-    fila("Puertos distintos", len(a["puertos"]), len(b["puertos"]))
-    fila("Flujos", len(a["flujos"]), len(b["flujos"]))
-    fila("Dominios DNS", len(a["dominios"]), len(b["dominios"]))
-    fila("Ficheros", len(a["ficheros"]), len(b["ficheros"]))
-    console.print(t)
-    console.print()
-
-    # ── Novedades ─────────────────────────────────────
-    console.print(f"  [titulo]▲ APARECE en «{truncar(analisis_b.nombre, 40)}»[/]")
-    console.print()
-
-    nuevos_hosts = b["hosts"] - a["hosts"]
-    _bloque(console, "Equipos nuevos", nuevos_hosts, "exito",
-            formato=lambda ip: f"[bright_cyan]{ip}[/] "
-                               f"[dim_text]{b['so'].get(ip, 'sin identificar')}[/]")
-    _bloque(console, "Protocolos nuevos", b["protocolos"] - a["protocolos"], "exito")
-    _bloque(console, "Puertos nuevos", b["puertos"] - a["puertos"], "exito",
-            formato=lambda p: f"{p} [dim_text]{services.servicio(p)}[/]")
-    _bloque(console, "Conexiones nuevas", b["flujos"] - a["flujos"], "exito",
-            formato=lambda f: f"{f[0]} → {f[1]}:{f[2]} "
-                              f"[dim_text]{services.servicio(f[2])}[/]")
-    _bloque(console, "Dominios nuevos", (b["dominios"] | b["sni"]) - (a["dominios"] | a["sni"]),
-            "exito", formato=lambda d: truncar(d, 60))
-    _bloque(console, "Ficheros nuevos", b["ficheros"] - a["ficheros"], "exito",
-            formato=lambda h: f"{truncar(b['nombres_fichero'].get(h, '?'), 34)} "
-                              f"[dim]{h[:16]}…[/]")
-
-    # ── Desaparecidos ─────────────────────────────────
-    console.print(f"  [titulo]▼ DESAPARECE respecto a «{truncar(analisis_a.nombre, 40)}»[/]")
-    console.print()
-
-    _bloque(console, "Equipos que ya no se ven", a["hosts"] - b["hosts"], "sev_medio")
-    _bloque(console, "Puertos que ya no se usan", a["puertos"] - b["puertos"], "sev_medio",
-            formato=lambda p: f"{p} [dim_text]{services.servicio(p)}[/]")
-    _bloque(console, "Conexiones cortadas", a["flujos"] - b["flujos"], "sev_medio",
-            formato=lambda f: f"{f[0]} → {f[1]}:{f[2]}")
-
-    # ── Cambios de sistema operativo ──────────────────
-    cambios_so = {ip: (a["so"][ip], b["so"][ip])
-                  for ip in a["so"].keys() & b["so"].keys()
-                  if a["so"][ip] != b["so"][ip]}
-    if cambios_so:
-        console.print("  [sev_alto]Equipos que ahora parecen otro sistema[/]")
-        for ip, (antes, ahora) in list(cambios_so.items())[:10]:
-            console.print(f"      [bright_cyan]{ip}[/]: {antes} → [sev_alto]{ahora}[/]")
-        console.print("      [dim_text]Una IP que cambia de sistema operativo entre "
-                      "dos capturas suele ser DHCP reasignando la direccion… o "
-                      "alguien suplantandola.[/]")
+def _print_set_diff(
+    console: Console,
+    label_new: str,
+    label_gone: str,
+    new_items,
+    gone_items,
+    limit: int = 12,
+    fmt=None,
+) -> None:
+    """Print added and removed items from two sets."""
+    if new_items:
+        console.print(f"  [bold bright_green]  + {label_new} ({len(new_items)}):[/]")
+        items = list(new_items)[:limit]
+        for item in items:
+            display = fmt(item) if fmt else str(item)
+            console.print(f"      {display}")
+        if len(new_items) > limit:
+            console.print(f"      [dim]... and {len(new_items) - limit} more[/]")
         console.print()
 
-    # ── Hallazgos ─────────────────────────────────────
-    if nuevos_hosts:
-        hallazgos.append(Finding(
-            titulo=f"{plural(len(nuevos_hosts), 'equipo nuevo', 'equipos nuevos')} "
-                   f"en la segunda captura",
-            descripcion=(
-                "Aparecen equipos que no estaban en la captura de referencia. En una "
-                "red controlada, cada equipo nuevo deberia poder explicarse."
-            ),
-            severidad="medio" if len(nuevos_hosts) > 3 else "bajo",
-            confianza="alta",
-            modulo=MODULE_ID,
-            evidencia=", ".join(sorted(nuevos_hosts)[:8]),
-            recomendacion="Contrasta la lista con tu inventario de activos.",
-            patron="",
-        ))
+    if gone_items:
+        console.print(f"  [bold red]  - {label_gone} ({len(gone_items)}):[/]")
+        items = list(gone_items)[:limit]
+        for item in items:
+            display = fmt(item) if fmt else str(item)
+            console.print(f"      {display}")
+        if len(gone_items) > limit:
+            console.print(f"      [dim]... and {len(gone_items) - limit} more[/]")
+        console.print()
 
-    nuevos_flujos_externos = {f for f in b["flujos"] - a["flujos"]
-                              if not f[1].startswith(("10.", "192.168.", "172."))}
-    if nuevos_flujos_externos:
-        hallazgos.append(Finding(
-            titulo=f"{plural(len(nuevos_flujos_externos), 'conexion nueva', 'conexiones nuevas')} "
-                   f"hacia Internet",
-            descripcion=(
-                "Hay destinos externos que no aparecian antes. Si esta comparativa "
-                "es de antes y despues de un incidente, aqui es donde suele estar "
-                "el canal de control del atacante."
-            ),
-            severidad="medio",
-            confianza="media",
-            modulo=MODULE_ID,
-            evidencia="; ".join(f"{f[0]} → {f[1]}:{f[2]}"
-                                for f in sorted(nuevos_flujos_externos)[:6]),
-            recomendacion=(
-                "Comprueba a quien pertenecen esos destinos y que proceso los "
-                "contacta."
-            ),
-            patron="",
-        ))
 
-    if cambios_so:
-        hallazgos.append(Finding(
-            titulo=f"{plural(len(cambios_so), 'IP cambia', 'IPs cambian')} de "
-                   f"sistema operativo entre capturas",
-            descripcion=(
-                "Una misma direccion IP se identifica como sistemas distintos en "
-                "cada captura. Lo habitual es que el DHCP haya reasignado la "
-                "direccion a otro equipo. La alternativa es que alguien este usando "
-                "esa IP sin permiso."
-            ),
-            severidad="medio",
-            confianza="media",
-            modulo=MODULE_ID,
-            evidencia="; ".join(f"{ip}: {x} → {y}" for ip, (x, y) in
-                                list(cambios_so.items())[:5]),
-            recomendacion=(
-                "Cruza con las concesiones del servidor DHCP para confirmar que el "
-                "cambio es legitimo."
-            ),
-            patron="os_conflict",
-        ))
+# ─────────────────────────────────────────────────────────
+# Public entry point
+# ─────────────────────────────────────────────────────────
 
-    if not (nuevos_hosts or b["flujos"] - a["flujos"] or cambios_so):
-        console.print(theme.sin_hallazgos(
-            "La segunda captura no aporta nada nuevo respecto a la primera."))
+def run(packets1, packets2, config: dict, console: Console) -> None:
+    """Perform a diff between two parsed captures and report what changed."""
+    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
 
-    console.print(theme.pie_modulo())
-    return hallazgos
+    if not packets1 or not packets2:
+        console.print("  [bold red]ERROR: Missing data — both captures are required for comparison.[/]")
+        console.print(pie_modulo())
+        return
+
+    console.print("  [dim]Building network profiles for both captures...[/]")
+    console.print()
+
+    p1 = _extract_profile(packets1)
+    p2 = _extract_profile(packets2)
+
+    # ── Summary table ──────────────────────────────────────
+    console.print("  [bold white]CAPTURE SUMMARY[/]")
+    console.print()
+
+    tbl = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 2))
+    tbl.add_column("Metric",     style="dim")
+    tbl.add_column("Capture 1",  justify="right")
+    tbl.add_column("Capture 2",  justify="right")
+    tbl.add_column("Change",     justify="right")
+
+    rows = [
+        ("Total packets",     p1["total"],           p2["total"]),
+        ("Unique IPs",        len(p1["ips"]),         len(p2["ips"])),
+        ("Unique dst ports",  len(p1["ports"]),       len(p2["ports"])),
+        ("Unique protocols",  len(p1["protocols"]),   len(p2["protocols"])),
+        ("Unique flows",      len(p1["flows"]),       len(p2["flows"])),
+    ]
+    for label, v1, v2 in rows:
+        change = _pct_change(v1, v2)
+        color  = "bright_green" if v2 > v1 else ("red" if v2 < v1 else "dim")
+        tbl.add_row(label, str(v1), str(v2), f"[{color}]{change}[/]")
+
+    console.print(tbl)
+    console.print()
+
+    # ── Additions (in capture 2, not in capture 1) ─────────
+    console.print("  [bold white]ADDITIONS IN CAPTURE 2:[/]")
+    console.print()
+
+    new_protos = p2["protocols"] - p1["protocols"]
+    new_ports  = p2["ports"]     - p1["ports"]
+    new_ips    = p2["ips"]       - p1["ips"]
+    new_flows  = p2["flows"]     - p1["flows"]
+
+    _print_set_diff(console, "New protocols",      "",             new_protos, set())
+    _print_set_diff(console, "New dst ports",      "",             new_ports,  set())
+    _print_set_diff(console, "New IPs observed",   "",             new_ips,    set())
+    _print_set_diff(
+        console,
+        "New communication flows", "",
+        new_flows, set(),
+        fmt=lambda f: f"{f[0]} -> {f[1]}:{f[2]}",
+    )
+
+    if not (new_protos or new_ports or new_ips or new_flows):
+        console.print(
+            "  [dim]No additions found — capture 2 is a subset of or identical in profile to capture 1.[/]"
+        )
+        console.print()
+
+    # ── Removals (in capture 1, gone in capture 2) ─────────
+    console.print("  [bold white]REMOVALS FROM CAPTURE 2:[/]")
+    console.print()
+
+    gone_protos = p1["protocols"] - p2["protocols"]
+    gone_ports  = p1["ports"]     - p2["ports"]
+    gone_ips    = p1["ips"]       - p2["ips"]
+    gone_flows  = p1["flows"]     - p2["flows"]
+
+    _print_set_diff(console, "", "Protocols no longer seen",  set(), gone_protos)
+    _print_set_diff(console, "", "Dst ports no longer seen",  set(), gone_ports)
+    _print_set_diff(console, "", "IPs no longer transmitting", set(), gone_ips)
+    _print_set_diff(
+        console,
+        "", "Flows cut / inactive",
+        set(), gone_flows,
+        fmt=lambda f: f"{f[0]} -> {f[1]}:{f[2]}",
+    )
+
+    if not (gone_protos or gone_ports or gone_ips or gone_flows):
+        console.print(
+            "  [dim]No removals — every flow and IP from capture 1 is still present in capture 2.[/]"
+        )
+        console.print()
+
+    # ── Top-protocol volume shift ───────────────────────────
+    shared_protos = p1["protocols"] & p2["protocols"]
+    if shared_protos:
+        console.print("  [bold white]PROTOCOL VOLUME SHIFT (shared protocols):[/]")
+        console.print()
+        vol_tbl = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 2))
+        vol_tbl.add_column("Protocol", style="dim")
+        vol_tbl.add_column("Cap 1 pkts", justify="right")
+        vol_tbl.add_column("Cap 2 pkts", justify="right")
+        vol_tbl.add_column("Change",     justify="right")
+
+        for proto in sorted(shared_protos):
+            c1 = p1["proto_counts"][proto]
+            c2 = p2["proto_counts"][proto]
+            change = _pct_change(c1, c2)
+            color  = "bright_green" if c2 > c1 else ("red" if c2 < c1 else "dim")
+            vol_tbl.add_row(proto, str(c1), str(c2), f"[{color}]{change}[/]")
+
+        console.print(vol_tbl)
+        console.print()
+
+    console.print(pie_modulo())
