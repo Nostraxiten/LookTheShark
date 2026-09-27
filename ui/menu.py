@@ -1,8 +1,8 @@
 """
-ui/menu.py — Menú interactivo y configuración de LookingTheShark.
+ui/menu.py — Interactive menu and configuration for LookingTheShark.
 
-Gestiona la selección de herramientas, la carga del archivo pcap,
-y las opciones de exportación en modo interactivo (--menu).
+Manages tool selection, pcap file loading, and export options
+in interactive mode (--menu).
 """
 
 import os
@@ -18,7 +18,7 @@ from ui.theme import SHARK_THEME, ICONOS, SEPARADOR
 
 
 # ──────────────────────────────────────────────────────
-# Registro de herramientas (espejo de TOOLS en main)
+# Tool registry (mirrors TOOLS in main)
 # ──────────────────────────────────────────────────────
 MENU_ITEMS = [
     {"num": "1",  "id": "ip_hosts",     "name": "IP / Hosts"},
@@ -93,9 +93,7 @@ def solicitar_archivo_diff(console: Console) -> Optional[tuple]:
 
 
 def seleccionar_modulos(console: Console) -> Optional[list]:
-    """
-    Shows tool menu and returns list of selected IDs.
-    """
+    """Shows the tool menu and returns the list of selected module IDs."""
     console.print(f"  [bold white]Select tool:[/]")
     console.print()
 

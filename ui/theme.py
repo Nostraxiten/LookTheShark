@@ -1,47 +1,47 @@
 """
-ui/theme.py — Paleta de colores y estilos consistentes de LookingTheShark.
+ui/theme.py — Consistent colour palette and styles for LookingTheShark.
 
-Cada nivel de severidad/confianza tiene un color asignado:
-  - Verde     → Información / seguro / bajo
-  - Amarillo  → Medio
-  - Naranja   → Alto (color 208)
-  - Rojo      → Crítico / alerta máxima
-  - Gris      → Info descriptiva / dim
-  - Cyan      → Branding del framework / datos objetivos
-  - Blanco    → Títulos / datos principales
+Each severity/confidence level has an assigned colour:
+  - Green     → Info / safe / low
+  - Yellow    → Medium
+  - Orange    → High (colour 208)
+  - Red       → Critical / maximum alert
+  - Grey      → Descriptive info / dim
+  - Cyan      → Framework branding / objective data
+  - White     → Titles / main data
 """
 
 from rich.theme import Theme
 
 
 # ──────────────────────────────────────────────────────
-# Tema principal de LookingTheShark
+# Main LookingTheShark theme
 # ──────────────────────────────────────────────────────
 SHARK_THEME = Theme({
-    # ── Severidad ──────────────────────────────────────
+    # ── Severity ───────────────────────────────────────
     "sev_info":      "bold bright_green",
     "sev_bajo":      "bold bright_green",
     "sev_medio":     "bold yellow",
     "sev_alto":      "bold color(208)",
     "sev_critico":   "bold bright_red",
-    # ── Confianza ──────────────────────────────────────
+    # ── Confidence ─────────────────────────────────────
     "conf_alta":     "bold bright_green",
     "conf_media":    "bold color(208)",
     "conf_baja":     "bold yellow",
-    # ── Sistema / UI ──────────────────────────────────
+    # ── System / UI ────────────────────────────────────
     "sistema":       "bold cyan",
     "progreso":      "cyan",
     "marca":         "bold cyan",
     "submarca":      "color(75)",
     "separador":     "color(240)",
-    # ── Texto base ────────────────────────────────────
+    # ── Base text ──────────────────────────────────────
     "titulo":        "bold white",
     "subtitulo":     "bold color(252)",
     "error":         "bold red",
     "exito":         "bold green",
     "advertencia":   "bold yellow",
     "dim_text":      "dim color(245)",
-    # ── Cabeceras de tabla ────────────────────────────
+    # ── Table headers ──────────────────────────────────
     "tabla_header":  "bold color(81)",
     "tabla_border":  "color(240)",
 })
@@ -102,7 +102,7 @@ def estilo_confianza(nivel: str) -> str:
 
 
 # ──────────────────────────────────────────────────────
-# Separadores §9.3 — ==== abre, ---- cierra
+# Module separators — ==== opens, ---- closes
 # ──────────────────────────────────────────────────────
 SEP_MODULO_OPEN  = "=" * 64
 SEP_MODULO_CLOSE = "-" * 64
@@ -112,9 +112,9 @@ SEPARADOR_FINO   = "[color(240)]" + "─" * 55 + "[/]"
 
 def cabecera_modulo(num: int, nombre: str) -> str:
     """
-    Genera la cabecera de un módulo según §9.3:
+    Generates the module header:
     ================================================================
-      [06] TLS / CERTIFICADOS
+      [06] TLS / CERTIFICATES
     ================================================================
     """
     lineas = [
@@ -126,5 +126,5 @@ def cabecera_modulo(num: int, nombre: str) -> str:
 
 
 def pie_modulo() -> str:
-    """Separador de cierre de módulo."""
+    """Module closing separator."""
     return SEP_MODULO_CLOSE

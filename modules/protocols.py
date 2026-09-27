@@ -39,20 +39,67 @@ SERVICIOS_CONOCIDOS = {
 
 # Protocols considered deprecated or risky
 PROTOCOLOS_DEPRECADOS = {
-    "telnet": {"severidad": "alto", "razon": "Plaintext protocol, replaced by SSH"},
-    "ftp": {"severidad": "medio", "razon": "Plaintext credentials, prefer SFTP/SCP"},
-    "tftp": {"severidad": "medio", "razon": "No authentication or encryption"},
-    "snmp": {"severidad": "medio", "razon": "SNMPv1/v2c transmits community strings in cleartext"},
-    "http": {"severidad": "bajo", "razon": "Unencrypted traffic, prefer HTTPS"},
-    "pop3": {"severidad": "medio", "razon": "Plaintext credentials without TLS"},
-    "nntp": {"severidad": "bajo", "razon": "Obsolete protocol"},
+    "telnet": {"severidad": "alto",  "razon": "Plaintext protocol, replaced by SSH"},
+    "ftp":    {"severidad": "medio", "razon": "Plaintext credentials, prefer SFTP/SCP"},
+    "tftp":   {"severidad": "medio", "razon": "No authentication or encryption"},
+    "snmp":   {"severidad": "medio", "razon": "SNMPv1/v2c transmits community strings in cleartext"},
+    "http":   {"severidad": "bajo",  "razon": "Unencrypted traffic, prefer HTTPS"},
+    "pop3":   {"severidad": "medio", "razon": "Plaintext credentials without TLS"},
+    "nntp":   {"severidad": "bajo",  "razon": "Obsolete protocol"},
 }
 
 # Ports mapped to deprecated protocols
 PUERTOS_DEPRECADOS = {
-    23: "telnet", 21: "ftp", 69: "tftp", 161: "snmp",
-    80: "http", 110: "pop3", 119: "nntp",
+    23:  "telnet",
+    21:  "ftp",
+    69:  "tftp",
+    161: "snmp",
+    80:  "http",
+    110: "pop3",
+    119: "nntp",
 }
+
+# For each deprecated protocol, the pyshark layer name we expect to see when
+# the traffic is actually that protocol (not just a port match).
+# This prevents false positives from custom apps that reuse well-known ports.
+_PROTO_LAYER_CHECK = {
+    "telnet": "telnet",
+    "ftp":    "ftp",
+    "tftp":   "tftp",
+    "snmp":   "snmp",
+    "http":   "http",
+    "pop3":   "pop",
+    "nntp":   "nntp",
+}
+
+
+def _confirmed_by_dissector(pkt, proto_name: str) -> bool:
+    """Return True if pyshark actually dissected this packet as *proto_name*.
+
+    Root cause of the original bug: detect_uncommon_protocols() fired on
+    port number alone, so any TCP/UDP traffic to port 23 would be labelled
+    "Telnet" even if tshark never identified a Telnet layer (e.g. a custom
+    app, a port scan SYN that never completed, or a reassigned port).  We
+    now cross-check the port match against the dissected protocol layer so
+    we only flag traffic where tshark actually decoded the deprecated protocol.
+    """
+    layer_name = _PROTO_LAYER_CHECK.get(proto_name, "")
+    if not layer_name:
+        return False
+
+    # Primary: pyshark layer presence
+    if hasattr(pkt, layer_name):
+        return True
+
+    # Secondary: highest_layer string comparison (case-insensitive)
+    try:
+        highest = pkt.highest_layer.lower()
+        if highest == proto_name or highest == layer_name:
+            return True
+    except Exception:
+        pass
+
+    return False
 
 
 def protocol_breakdown(packets) -> dict:
@@ -85,7 +132,16 @@ def port_breakdown(packets) -> dict:
 
 
 def detect_uncommon_protocols(packets, baseline_profile: dict = None) -> List[Finding]:
-    """Detects deprecated or insecure protocols."""
+    """Detects deprecated or insecure protocols.
+
+    A finding is only emitted when BOTH conditions are met:
+      1. Traffic targets a port in PUERTOS_DEPRECADOS.
+      2. The pyshark dissector actually identified the corresponding protocol
+         layer (i.e. _confirmed_by_dissector() returns True).
+
+    This prevents false positives from custom applications or incomplete TCP
+    connections that merely happen to use a well-known port number.
+    """
     findings = []
     ports_seen = set()
 
@@ -97,9 +153,14 @@ def detect_uncommon_protocols(packets, baseline_profile: dict = None) -> List[Fi
             dst_port = safe_int(safe_get_attr(pkt, "udp", "dstport"), None)
 
         if dst_port is not None and dst_port in PUERTOS_DEPRECADOS:
+            proto = PUERTOS_DEPRECADOS[dst_port]
+
+            # Only flag if the dissector confirmed the protocol
+            if not _confirmed_by_dissector(pkt, proto):
+                continue
+
             if dst_port not in ports_seen:
                 ports_seen.add(dst_port)
-                proto = PUERTOS_DEPRECADOS[dst_port]
                 info = PROTOCOLOS_DEPRECADOS.get(proto, {})
 
                 if baseline_profile:
@@ -132,7 +193,7 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
 
     proto_stats = protocol_breakdown(packets)
-    port_stats = port_breakdown(packets)
+    port_stats  = port_breakdown(packets)
 
     # ── Protocol Breakdown Table ───────────────────────
     console.print("  [bold white]Protocol Breakdown:[/]")

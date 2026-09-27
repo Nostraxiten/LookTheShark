@@ -22,12 +22,21 @@ MODULE_NAME = "DNS"
 MODULE_ID   = "dns"
 
 ENTROPY_THRESHOLD = 3.8
-TUNNEL_LABEL_LEN = 50
-TUNNEL_QPS_THRESHOLD = 5.0
+TUNNEL_LABEL_LEN  = 50
+
+# ── Tunneling QPS threshold ────────────────────────────────────────────────────
+# Trade-off: a lower value catches slow exfiltration but flags bursty legitimate
+# traffic (e.g. a browser resolving 10 resources in <2 s).  We also require a
+# minimum time span (TUNNEL_MIN_SPAN_S) so that a short burst over < 1 second
+# with only 10–11 queries does NOT fire — that window is too small to be
+# meaningful.  Raise TUNNEL_QPS_THRESHOLD or TUNNEL_MIN_SPAN_S via config to
+# reduce false positives in high-traffic environments.
+TUNNEL_QPS_THRESHOLD = 5.0   # queries/second sustained to a single resolver
+TUNNEL_MIN_SPAN_S    = 2.0   # minimum observation window in seconds
 
 
 def entropy_score(domain: str) -> float:
-    """Calculates Shannon entropy of domain name without TLD."""
+    """Calculates Shannon entropy of a domain name without the TLD."""
     parts = domain.rstrip(".").split(".")
     if len(parts) > 1:
         label = ".".join(parts[:-1])
@@ -42,8 +51,18 @@ def entropy_score(domain: str) -> float:
     return -sum((c / total) * math.log2(c / total) for c in freq.values())
 
 
+def _is_dns_response(qr_value: str) -> bool:
+    """Return True if the pyshark dns.flags_response field indicates a response.
+
+    Root cause of the original bug: pyshark returns the STRING "True"/"False"
+    for this field on modern tshark versions, not the integer "1"/"0" that the
+    RFC uses.  We therefore normalise both representations.
+    """
+    return str(qr_value).strip().lower() in ("1", "true")
+
+
 def extract_dns_queries(packets) -> list:
-    """Extracts all DNS queries from the capture."""
+    """Extracts all DNS queries and responses from the capture."""
     queries = []
 
     for pkt in packets:
@@ -85,7 +104,8 @@ def extract_dns_queries(packets) -> list:
             "src": src,
             "dst": dst,
             "answers": answers,
-            "is_response": str(qr) == "1",
+            # Fixed: use _is_dns_response() instead of str(qr) == "1"
+            "is_response": _is_dns_response(qr),
             "timestamp": timestamp,
         })
 
@@ -132,8 +152,21 @@ def detect_dga(queries: list) -> List[Finding]:
     return findings
 
 
-def detect_tunneling(queries: list, threshold: float = TUNNEL_QPS_THRESHOLD) -> List[Finding]:
-    """Detects potential DNS tunneling via query rate or long subdomains."""
+def detect_tunneling(
+    queries: list,
+    threshold: float = TUNNEL_QPS_THRESHOLD,
+    min_span: float = TUNNEL_MIN_SPAN_S,
+) -> List[Finding]:
+    """Detects potential DNS tunneling via long subdomains or sustained query rate.
+
+    The rate check requires both:
+      - >= 10 query packets to the same destination
+      - A minimum time span of *min_span* seconds (default 2 s) so that a
+        brief browser burst of 10 queries in < 1 s does not fire as a false
+        positive.  The combined requirement — count AND sustained rate over a
+        meaningful window — significantly reduces false positives from
+        legitimate high-concurrency resolvers.
+    """
     findings = []
 
     # 1. Long subdomains
@@ -165,10 +198,10 @@ def detect_tunneling(queries: list, threshold: float = TUNNEL_QPS_THRESHOLD) -> 
                     )
                 ))
 
-    # 2. Query rate per DNS destination
+    # 2. Sustained query rate per DNS destination (queries only, not responses)
     queries_per_dst = defaultdict(list)
     for q in queries:
-        if not q["is_response"]:
+        if not q["is_response"]:   # Fixed: only count genuine queries
             queries_per_dst[q["dst"]].append(q)
 
     for dst, qs in queries_per_dst.items():
@@ -187,13 +220,16 @@ def detect_tunneling(queries: list, threshold: float = TUNNEL_QPS_THRESHOLD) -> 
         if len(timestamps) >= 2:
             timestamps.sort()
             span = (timestamps[-1] - timestamps[0]).total_seconds()
-            if span > 0:
+            # Require minimum observation window to avoid false positives from
+            # short bursts that are normal for browsers / package managers.
+            if span >= min_span and span > 0:
                 qps = len(timestamps) / span
                 if qps >= threshold:
                     findings.append(Finding(
                         titulo=f"High DNS query rate towards {dst}",
                         descripcion=(
-                            f"{qps:.1f} queries/second (threshold: {threshold}). "
+                            f"{qps:.1f} queries/second sustained over {span:.0f}s "
+                            f"(threshold: {threshold} qps, min window: {min_span}s). "
                             f"Could indicate DNS tunneling or high-rate exfiltration. "
                             f"Review manually."
                         ),
@@ -204,7 +240,8 @@ def detect_tunneling(queries: list, threshold: float = TUNNEL_QPS_THRESHOLD) -> 
                         patron="dns_tunneling",
                         interpretacion=(
                             "DNS Tunneling / Exfiltration Rate Anomaly | "
-                            "DNS query rate exceeding 5.0 queries/second to a single resolver destination | "
+                            f"DNS query rate exceeding {threshold} queries/second to a single resolver "
+                            f"sustained over at least {min_span}s | "
                             "Legitimate high-volume recursive resolver traffic, intense web browser prefetching, or local DNS cache misses"
                         )
                     ))
@@ -227,7 +264,7 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
 
     # ── Summary ────────────────────────────────────────
     unique_domains = set(q["name"].lower().rstrip(".") for q in queries)
-    query_only = [q for q in queries if not q["is_response"]]
+    query_only    = [q for q in queries if not q["is_response"]]
     response_only = [q for q in queries if q["is_response"]]
 
     console.print(f"  DNS Queries:       [bold white]{len(query_only)}[/]")
@@ -266,7 +303,10 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     dga_findings = detect_dga(queries)
     findings.extend(dga_findings)
 
-    tunnel_findings = detect_tunneling(queries)
+    # Allow per-run config overrides for the QPS threshold and min span
+    qps_threshold = config.get("dns_tunnel_qps_threshold", TUNNEL_QPS_THRESHOLD)
+    min_span      = config.get("dns_tunnel_min_span_s", TUNNEL_MIN_SPAN_S)
+    tunnel_findings = detect_tunneling(queries, threshold=qps_threshold, min_span=min_span)
     findings.extend(tunnel_findings)
 
     if findings:

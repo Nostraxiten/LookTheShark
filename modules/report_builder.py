@@ -1,8 +1,8 @@
 """
-modules/report_builder.py — §3.7 Módulo Reporte.
+modules/report_builder.py — Report Builder Module.
 
-Exporta los hallazgos a Markdown, JSON y HTML usando plantillas Jinja2.
-Soporta anonimización de IPs (sustitución por host-A, host-B).
+Exports findings to Markdown, JSON, and HTML using Jinja2 templates.
+Supports IP anonymisation (substitution with host-A, host-B labels).
 """
 
 import os
@@ -22,7 +22,7 @@ MODULE_ID   = "report"
 
 
 # ──────────────────────────────────────────────────────
-# Anonimización
+# IP anonymisation
 # ──────────────────────────────────────────────────────
 _ANONYMIZE_MAP = {}
 _ANON_COUNTER = 65  # 65 = 'A'
@@ -37,35 +37,34 @@ def _anonymize_ip(ip_str: str) -> str:
     return _ANONYMIZE_MAP[ip_str]
 
 def anonymize_findings(findings: List[Finding]) -> List[Finding]:
-    """Sustituye IPs en los findings si se requiere anonimizar."""
+    """Replaces IP addresses in findings when anonymisation is requested."""
     import re
     ip_pattern = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
-    
+
     anonymized = []
     for f in findings:
         f_copy = dataclasses.replace(f)
-        
-        # Encontrar todas las IPs en descripción y evidencia
+
+        # Find all IPs in description and evidence
         ips = set(ip_pattern.findall(f_copy.descripcion) + ip_pattern.findall(f_copy.evidencia))
-        
+
         for ip in ips:
             anon = _anonymize_ip(ip)
             f_copy.descripcion = f_copy.descripcion.replace(ip, anon)
-            f_copy.evidencia = f_copy.evidencia.replace(ip, anon)
-            f_copy.titulo = f_copy.titulo.replace(ip, anon)
-            
+            f_copy.evidencia   = f_copy.evidencia.replace(ip, anon)
+            f_copy.titulo      = f_copy.titulo.replace(ip, anon)
+
         anonymized.append(f_copy)
-        
+
     return anonymized
 
 
 # ──────────────────────────────────────────────────────
-# Exportadores
+# Exporters
 # ──────────────────────────────────────────────────────
 def get_jinja_env():
-    """Configura y devuelve el entorno de Jinja2."""
+    """Configures and returns the Jinja2 environment."""
     template_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
-    # Crear carpeta templates y archivos si no existen
     os.makedirs(template_dir, exist_ok=True)
     return Environment(loader=FileSystemLoader(template_dir))
 
@@ -75,13 +74,13 @@ def export_markdown(findings: List[Finding], capture_info: dict, out_path: str):
     try:
         template = env.get_template("report.md.j2")
     except Exception:
-        # Fallback raw si no existe plantilla
+        # Fallback if template is missing
         with open(out_path, "w", encoding="utf-8") as f:
-            f.write(f"# Informe LookingTheShark\n\n**Captura**: {capture_info.get('nombre')}\n\n")
+            f.write(f"# LookingTheShark Report\n\n**Capture**: {capture_info.get('nombre')}\n\n")
             for fd in findings:
                 f.write(f"### [{fd.severidad.upper()}] {fd.titulo}\n")
-                f.write(f"- **Descripción**: {fd.descripcion}\n")
-                f.write(f"- **Evidencia**: {fd.evidencia}\n")
+                f.write(f"- **Description**: {fd.descripcion}\n")
+                f.write(f"- **Evidence**: {fd.evidencia}\n")
                 if fd.mitre_name:
                     f.write(f"- **MITRE**: {fd.mitre_name}\n")
                 f.write("\n")
@@ -101,7 +100,7 @@ def export_html(findings: List[Finding], capture_info: dict, out_path: str):
         template = env.get_template("report.html.j2")
     except Exception:
         with open(out_path, "w", encoding="utf-8") as f:
-            f.write(f"<html><body><h1>Informe LookingTheShark</h1><p>Captura: {capture_info.get('nombre')}</p></body></html>")
+            f.write(f"<html><body><h1>LookingTheShark Report</h1><p>Capture: {capture_info.get('nombre')}</p></body></html>")
         return
 
     content = template.render(
@@ -127,33 +126,33 @@ def export_json(findings: List[Finding], capture_info: dict, out_path: str):
 
 
 def build_reports(findings: List[Finding], config: dict, capture_info: dict) -> None:
-    """Genera todos los reportes solicitados por el usuario."""
-    
-    # Anonimizar si es necesario
+    """Generates all reports requested by the user."""
+
+    # Anonymise if requested
     if config.get("anonymize", False):
         findings_to_export = anonymize_findings(findings)
     else:
         findings_to_export = findings
-        
-    # Agrupar findings por severidad para las plantillas
+
+    # Sort findings by severity for the templates
     findings_to_export.sort(
         key=lambda x: {"critico": 0, "alto": 1, "medio": 2, "bajo": 3, "info": 4}.get(x.severidad, 5)
     )
 
     fmt = config.get("format", "md").lower()
-    base_name = config.get("output_base", "informe_captura")
+    base_name = config.get("output_base", "report_capture")
 
     if "md" in fmt:
         path = f"{base_name}.md"
         export_markdown(findings_to_export, capture_info, path)
-        print(f"[+] Informe Markdown generado: {path}")
+        print(f"[+] Markdown report generated: {path}")
 
     if "html" in fmt:
         path = f"{base_name}.html"
         export_html(findings_to_export, capture_info, path)
-        print(f"[+] Informe HTML generado: {path}")
+        print(f"[+] HTML report generated: {path}")
 
     if "json" in fmt:
         path = f"{base_name}.json"
         export_json(findings_to_export, capture_info, path)
-        print(f"[+] Informe JSON generado: {path}")
+        print(f"[+] JSON report generated: {path}")

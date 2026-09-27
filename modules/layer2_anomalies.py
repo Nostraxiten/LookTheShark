@@ -65,11 +65,27 @@ def detect_dhcp_rogue(packets) -> List[Finding]:
     dhcp_offers = defaultdict(set)
     
     for pkt in packets:
+        layer_name = None
         if hasattr(pkt, "dhcp"):
-            msg_type = safe_get_attr(pkt, "dhcp", "option.dhcp")
+            layer_name = "dhcp"
+        elif hasattr(pkt, "bootp"):
+            layer_name = "bootp"
+            
+        if layer_name:
+            msg_type = (
+                safe_get_attr(pkt, layer_name, "option.dhcp")
+                or safe_get_attr(pkt, layer_name, "option_dhcp")
+                or safe_get_attr(pkt, layer_name, "type")
+                or safe_get_attr(pkt, layer_name, "option_dhcp_message_type")
+            )
             if msg_type in ("2", "5"):
                 server_mac = safe_get_attr(pkt, "eth", "src")
-                txid = safe_get_attr(pkt, "bootp", "id")
+                txid = (
+                    safe_get_attr(pkt, "dhcp", "id")
+                    or safe_get_attr(pkt, "bootp", "id")
+                    or safe_get_attr(pkt, layer_name, "id")
+                    or safe_get_attr(pkt, layer_name, "xid")
+                )
                 if server_mac and txid:
                     dhcp_offers[txid].add(server_mac)
                     
@@ -85,7 +101,7 @@ def detect_dhcp_rogue(packets) -> List[Finding]:
                 severidad="alto",
                 confianza=Confianza.ALTA,
                 modulo=MODULE_ID,
-                evidencia=f"DHCP server MACs: {', '.join(macs)}",
+                evidencia=f"DHCP server MACs: {', '.join(sorted(macs))}",
                 patron="dhcp_rogue",
                 interpretacion=(
                     "DHCP Rogue Server / Spoofing | "
@@ -93,7 +109,6 @@ def detect_dhcp_rogue(packets) -> List[Finding]:
                     "Dual redundant DHCP servers in high-availability setup, misconfigured switch relay agent, or home router connected to enterprise LAN"
                 )
             ))
-            break
             
     return findings
 

@@ -1,8 +1,8 @@
 """
-ui/banner.py — Arte ASCII 3D y presentación de LookingTheShark.
+ui/banner.py — ASCII 3D art and presentation for LookingTheShark.
 
-Banner se imprime siempre al arrancar lookingtheshark.py, tanto en modo CLI
-como en modo menú interactivo. Va antes que cualquier otra salida.
+The banner is printed on every startup of lookingtheshark.py, both in CLI
+mode and interactive menu mode. It appears before any other output.
 """
 
 import os
@@ -12,7 +12,7 @@ from rich.align import Align
 
 
 # ──────────────────────────────────────────────────────
-# Versión del framework
+# Framework version
 # ──────────────────────────────────────────────────────
 VERSION = "1.0.0"
 AUTOR   = "@nostraxiten"
@@ -20,7 +20,7 @@ TAGLINE = "Forensic translator for network captures"
 DISCLAIMER_CORTO = "Analyze only own or authorized captures"
 
 # ──────────────────────────────────────────────────────
-# Banner ASCII 3D — exacto del spec
+# Banner ASCII 3D
 # ──────────────────────────────────────────────────────
 BANNER_ASCII = r"""
  **         *******     *******   **   **  ******** **      **     **     *******   **   **  ********
@@ -33,7 +33,7 @@ BANNER_ASCII = r"""
 ////////   ///////     ///////   //   // ////////  //      // //      // //     // //   // ////////  
 """
 
-# Versión coloreada ANSI para terminales que soportan color
+# ANSI-coloured version for terminals that support colour
 BANNER_ANSI = (
     "\033[0;36;1m **         *******     *******   **   **  \033[0;97;1m******** **      **     **     *******   **   **  ********\033[0m\n"
     "\033[0;36;1m/**        **/////**   **/////** /**  **  \033[0;97;1m**////// /**     /**    ****   /**////** /**  **  **////// \033[0m\n"
@@ -47,7 +47,7 @@ BANNER_ANSI = (
 
 
 def _soporte_ansi() -> bool:
-    """Detecta si el terminal soporta secuencias ANSI."""
+    """Detects whether the terminal supports ANSI escape sequences."""
     if sys.platform == "win32":
         try:
             import ctypes
@@ -63,7 +63,7 @@ def _soporte_ansi() -> bool:
 
 
 def mostrar_banner(console: Console) -> None:
-    """Muestra el banner completo de LookingTheShark en el terminal."""
+    """Displays the full LookingTheShark banner in the terminal."""
     console.print()
 
     if _soporte_ansi():
@@ -72,7 +72,7 @@ def mostrar_banner(console: Console) -> None:
     else:
         console.print(BANNER_ASCII, style="bold cyan")
 
-    # ── Línea de versión + disclaimer ──────────────────
+    # ── Version line + disclaimer ──────────────────────
     console.print()
     console.print(
         Align.center(

@@ -1,10 +1,10 @@
 """
-modules/__init__.py — Núcleo compartido de todos los módulos de LookingTheShark.
+modules/__init__.py — Shared core for all LookingTheShark modules.
 
-Define:
-  - Finding: dataclass estándar de hallazgo que todos los módulos producen
-             y que report_builder consume.
-  - Utilidades comunes para todos los módulos.
+Defines:
+  - Finding: standard finding dataclass produced by every module
+             and consumed by report_builder.
+  - Common utilities shared across all modules.
 """
 
 from dataclasses import dataclass, field
@@ -13,7 +13,7 @@ from datetime import datetime
 
 
 # ──────────────────────────────────────────────────────
-# Niveles de confianza
+# Confidence levels
 # ──────────────────────────────────────────────────────
 class Confianza:
     ALTA  = "alta"
@@ -22,24 +22,25 @@ class Confianza:
 
 
 # ──────────────────────────────────────────────────────
-# Hallazgo de seguridad genérico
-# Cada módulo produce una lista de estos.
+# Generic security finding.
+# Each module produces a list of these.
 # ──────────────────────────────────────────────────────
 @dataclass
 class Finding:
-    """Representa un hallazgo de seguridad con nivel de confianza.
+    """Represents a security finding with a confidence level.
 
     Attributes:
-        titulo:      Resumen corto del hallazgo.
-        descripcion: Explicación detallada.
-        severidad:   'critico' | 'alto' | 'medio' | 'bajo' | 'info'
-        confianza:   Confianza.ALTA / MEDIA / BAJA
-        modulo:      ID del módulo que generó el hallazgo.
-        evidencia:   Paquetes, rango de tiempo, IPs concretas.
-        mitre_id:    Técnica MITRE ATT&CK (se rellena en mitre_mapping).
-        mitre_name:  Nombre de la técnica MITRE.
-        patron:      Clave interna para el mapeo MITRE (ej. 'portscan').
-        timestamp:   Momento del hallazgo en la captura (si aplica).
+        titulo:         Short summary of the finding.
+        descripcion:    Detailed explanation.
+        severidad:      'critico' | 'alto' | 'medio' | 'bajo' | 'info'
+        confianza:      Confianza.ALTA / MEDIA / BAJA
+        modulo:         ID of the module that generated the finding.
+        evidencia:      Packets, time range, specific IPs.
+        mitre_id:       MITRE ATT&CK technique (filled in by mitre_mapping).
+        mitre_name:     Name of the MITRE technique.
+        patron:         Internal key for MITRE mapping (e.g. 'portscan').
+        timestamp:      Moment of the finding in the capture (if applicable).
+        interpretacion: Pipe-separated context string (attack | pattern | legit).
     """
     titulo: str
     descripcion: str
@@ -55,13 +56,13 @@ class Finding:
 
 
 # ──────────────────────────────────────────────────────
-# Utilidades comunes
+# Common utilities
 # ──────────────────────────────────────────────────────
 import ipaddress
 
 
 def es_ip_privada(ip_str: str) -> bool:
-    """Comprueba si una IP es privada (RFC 1918 / link-local / loopback)."""
+    """Returns True if the IP is private (RFC 1918 / link-local / loopback)."""
     try:
         ip = ipaddress.ip_address(ip_str)
         return ip.is_private
@@ -70,7 +71,7 @@ def es_ip_privada(ip_str: str) -> bool:
 
 
 def formatear_bytes(n: int) -> str:
-    """Convierte bytes a formato legible (KB, MB, GB)."""
+    """Converts bytes to a human-readable string (KB, MB, GB)."""
     if n < 1024:
         return f"{n} B"
     elif n < 1024 ** 2:
@@ -82,7 +83,7 @@ def formatear_bytes(n: int) -> str:
 
 
 def formatear_duracion(segundos: float) -> str:
-    """Convierte segundos a formato HH:MM:SS."""
+    """Converts seconds to HH:MM:SS format."""
     h = int(segundos // 3600)
     m = int((segundos % 3600) // 60)
     s = int(segundos % 60)
@@ -92,7 +93,7 @@ def formatear_duracion(segundos: float) -> str:
 
 
 def safe_get_attr(pkt, layer_name: str, attr_name: str, default=""):
-    """Extrae un atributo de un paquete pyshark de forma segura."""
+    """Safely extracts an attribute from a pyshark packet layer."""
     try:
         layer = getattr(pkt, layer_name, None)
         if layer is None:
@@ -104,7 +105,7 @@ def safe_get_attr(pkt, layer_name: str, attr_name: str, default=""):
 
 
 def safe_int(value, default: int = 0) -> int:
-    """Convierte a int de forma segura."""
+    """Safely converts a value to int."""
     try:
         return int(value)
     except (ValueError, TypeError):
@@ -112,7 +113,7 @@ def safe_int(value, default: int = 0) -> int:
 
 
 def safe_float(value, default: float = 0.0) -> float:
-    """Convierte a float de forma segura."""
+    """Safely converts a value to float."""
     try:
         return float(value)
     except (ValueError, TypeError):

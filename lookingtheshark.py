@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-lookingtheshark.py — Punto de entrada de LookingTheShark.
+lookingtheshark.py — Entry point for LookingTheShark.
 
-Traductor forense de capturas de red.
-Flujo: Banner → Parseo (pyshark) → Ejecución de módulos → Reporte.
+Forensic translator for network captures.
+Flow: Banner → Parsing (pyshark) → Module execution → Report.
 """
 
 import os
@@ -17,21 +17,21 @@ from typing import List, Optional
 try:
     import pyshark
 except ImportError:
-    print("[ERROR] pyshark no instalado. Ejecuta: pip install -r requirements.txt")
+    print("[ERROR] pyshark not installed. Run: pip install -r requirements.txt")
     sys.exit(1)
 
 try:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 except ImportError:
-    print("[ERROR] rich no instalado. Ejecuta: pip install -r requirements.txt")
+    print("[ERROR] rich not installed. Run: pip install -r requirements.txt")
     sys.exit(1)
 
 from ui.theme import SHARK_THEME, SEPARADOR
 from ui.banner import mostrar_banner
 from ui.menu import solicitar_archivo, seleccionar_modulos, solicitar_exportacion, MENU_ITEMS
 
-# ── Importar módulos ───────────────────────────────────
+# ── Import modules ────────────────────────────────────
 from modules import Finding
 import modules.ip_hosts
 import modules.protocols
@@ -180,7 +180,7 @@ def main():
     parser.add_argument("--baseline", help="Normal network baseline profile in JSON")
     parser.add_argument("--whitelist-ips", help="Text file of IPs to exclude (one per line)")
     parser.add_argument("--time-range", help="Time window HH:MM-HH:MM (not implemented in this demo)")
-    parser.add_argument("--confidence-threshold", choices=["bajo","medio","alto"], default="bajo", help="Minimum confidence threshold (bajo, medio, alto)")
+    parser.add_argument("--confidence-threshold", choices=["bajo","medio","alto"], default="bajo", help="Minimum confidence threshold (bajo=low, medio=medium, alto=high)")
     parser.add_argument("--anonymize", action="store_true", help="Replace IPs with host-A, host-B in the report")
     parser.add_argument("--format", default="md", help="md,json,html (comma-combinable)")
     parser.add_argument("--mitre", action="store_true", help="Enable MITRE ATT&CK mapping")
