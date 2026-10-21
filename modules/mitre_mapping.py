@@ -13,7 +13,7 @@ from typing import List
 from rich.console import Console
 
 from modules import Finding
-from ui.theme import cabecera_modulo, pie_modulo
+from ui.theme import module_header, module_footer
 
 
 MODULE_NUM  = 11
@@ -35,25 +35,25 @@ def _load_mitre_map():
 
 def run(findings: List[Finding], config: dict, console: Console) -> None:
     """Enriches findings with MITRE ATT&CK information."""
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     if not config.get("mitre_mode", False):
         console.print("  [dim]MITRE mapping disabled. Use --mitre to enable.[/]")
-        console.print(pie_modulo())
+        console.print(module_footer())
         return
 
     _load_mitre_map()
     if not _MITRE_MAP:
         console.print("  [bold red][FAIL] Could not load data/mitre_map.json[/]")
-        console.print(pie_modulo())
+        console.print(module_footer())
         return
 
     mapped_count = 0
     mapped_techniques = set()
 
     for f in findings:
-        if f.patron and f.patron in _MITRE_MAP:
-            t = _MITRE_MAP[f.patron]
+        if f.pattern and f.pattern in _MITRE_MAP:
+            t = _MITRE_MAP[f.pattern]
             f.mitre_id = t["id"]
             f.mitre_name = f"{t['id']} {t['name']}"
             mapped_count += 1
@@ -67,22 +67,22 @@ def run(findings: List[Finding], config: dict, console: Console) -> None:
         console.print()
         
         # Display attack explanations if present
-        explanations = [f for f in findings if f.mitre_name and f.interpretacion]
+        explanations = [f for f in findings if f.mitre_name and f.interpretation]
         if explanations:
             console.print("  [bold white]Attack Explanations & Context:[/]")
             console.print()
             for f in explanations:
-                parts = [p.strip() for p in f.interpretacion.split("|")]
+                parts = [p.strip() for p in f.interpretation.split("|")]
                 if len(parts) == 3:
                     attack_type, pattern_ev, legit_alt = parts
                     console.print(f"    [bold color(81)]* {f.mitre_name}[/] - [bold white]{attack_type}[/]")
                     console.print(f"      [dim]Evidence/Pattern:[/] {pattern_ev}")
                     console.print(f"      [dim]Legitimate Context:[/] {legit_alt}")
                 else:
-                    console.print(f"    [bold color(81)]* {f.mitre_name}[/]: {f.interpretacion}")
+                    console.print(f"    [bold color(81)]* {f.mitre_name}[/]: {f.interpretation}")
                 console.print()
     else:
         console.print("  [dim]No findings with patterns mappable to MITRE in this capture.[/]")
         console.print()
 
-    console.print(pie_modulo())
+    console.print(module_footer())

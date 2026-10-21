@@ -109,7 +109,7 @@ python lookingtheshark.py --file malware.pcapng --modules ip_hosts,dns,tls,heuri
 
 #### Compare Two Captures (Baseline vs. Incident Mode)
 ```bash
-python lookingtheshark.py --diff baseline.pcap incidente.pcap
+python lookingtheshark.py --diff baseline.pcap incident.pcap
 ```
 
 ---

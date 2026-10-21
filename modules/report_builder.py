@@ -46,13 +46,13 @@ def anonymize_findings(findings: List[Finding]) -> List[Finding]:
         f_copy = dataclasses.replace(f)
 
         # Find all IPs in description and evidence
-        ips = set(ip_pattern.findall(f_copy.descripcion) + ip_pattern.findall(f_copy.evidencia))
+        ips = set(ip_pattern.findall(f_copy.description) + ip_pattern.findall(f_copy.evidence))
 
         for ip in ips:
             anon = _anonymize_ip(ip)
-            f_copy.descripcion = f_copy.descripcion.replace(ip, anon)
-            f_copy.evidencia   = f_copy.evidencia.replace(ip, anon)
-            f_copy.titulo      = f_copy.titulo.replace(ip, anon)
+            f_copy.description = f_copy.description.replace(ip, anon)
+            f_copy.evidence    = f_copy.evidence.replace(ip, anon)
+            f_copy.title       = f_copy.title.replace(ip, anon)
 
         anonymized.append(f_copy)
 
@@ -76,11 +76,11 @@ def export_markdown(findings: List[Finding], capture_info: dict, out_path: str):
     except Exception:
         # Fallback if template is missing
         with open(out_path, "w", encoding="utf-8") as f:
-            f.write(f"# LookingTheShark Report\n\n**Capture**: {capture_info.get('nombre')}\n\n")
+            f.write(f"# LookingTheShark Report\n\n**Capture**: {capture_info.get('name')}\n\n")
             for fd in findings:
-                f.write(f"### [{fd.severidad.upper()}] {fd.titulo}\n")
-                f.write(f"- **Description**: {fd.descripcion}\n")
-                f.write(f"- **Evidence**: {fd.evidencia}\n")
+                f.write(f"### [{fd.severity.upper()}] {fd.title}\n")
+                f.write(f"- **Description**: {fd.description}\n")
+                f.write(f"- **Evidence**: {fd.evidence}\n")
                 if fd.mitre_name:
                     f.write(f"- **MITRE**: {fd.mitre_name}\n")
                 f.write("\n")
@@ -100,7 +100,7 @@ def export_html(findings: List[Finding], capture_info: dict, out_path: str):
         template = env.get_template("report.html.j2")
     except Exception:
         with open(out_path, "w", encoding="utf-8") as f:
-            f.write(f"<html><body><h1>LookingTheShark Report</h1><p>Capture: {capture_info.get('nombre')}</p></body></html>")
+            f.write(f"<html><body><h1>LookingTheShark Report</h1><p>Capture: {capture_info.get('name')}</p></body></html>")
         return
 
     content = template.render(
@@ -116,8 +116,8 @@ def export_json(findings: List[Finding], capture_info: dict, out_path: str):
         "metadata": {
             "tool": "LookingTheShark",
             "version": "1.0",
-            "capture_file": capture_info.get("nombre", ""),
-            "packets": capture_info.get("paquetes", 0),
+            "capture_file": capture_info.get("name", ""),
+            "packets": capture_info.get("packets", 0),
         },
         "findings": [dataclasses.asdict(f) for f in findings]
     }
@@ -136,7 +136,7 @@ def build_reports(findings: List[Finding], config: dict, capture_info: dict) -> 
 
     # Sort findings by severity for the templates
     findings_to_export.sort(
-        key=lambda x: {"critico": 0, "alto": 1, "medio": 2, "bajo": 3, "info": 4}.get(x.severidad, 5)
+        key=lambda x: {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}.get(x.severity, 5)
     )
 
     fmt = config.get("format", "md").lower()

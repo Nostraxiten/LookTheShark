@@ -8,15 +8,17 @@
         h1, h2, h3 { color: #2c3e50; }
         .header { background-color: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 5px solid #00bcd4; margin-bottom: 30px; }
         .finding { border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
-        .sev-critico { border-left: 5px solid #f44336; background-color: #ffebee; }
-        .sev-alto { border-left: 5px solid #ff9800; background-color: #fff3e0; }
-        .sev-medio { border-left: 5px solid #ffeb3b; background-color: #fffde7; }
-        .sev-bajo { border-left: 5px solid #4caf50; background-color: #e8f5e9; }
+        .sev-critical { border-left: 5px solid #f44336; background-color: #ffebee; }
+        .sev-high { border-left: 5px solid #ff9800; background-color: #fff3e0; }
+        .sev-medium { border-left: 5px solid #ffeb3b; background-color: #fffde7; }
+        .sev-low { border-left: 5px solid #4caf50; background-color: #e8f5e9; }
+        .sev-info { border-left: 5px solid #2196f3; background-color: #e3f2fd; }
         .badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-weight: bold; font-size: 0.85em; color: white; margin-right: 10px; }
-        .bg-critico { background-color: #f44336; }
-        .bg-alto { background-color: #ff9800; }
-        .bg-medio { background-color: #fbc02d; color: black; }
-        .bg-bajo { background-color: #4caf50; }
+        .bg-critical { background-color: #f44336; }
+        .bg-high { background-color: #ff9800; }
+        .bg-medium { background-color: #fbc02d; color: black; }
+        .bg-low { background-color: #4caf50; }
+        .bg-info { background-color: #2196f3; }
         code { background-color: #f5f5f5; padding: 2px 5px; border-radius: 3px; font-family: monospace; }
         .evidence { background-color: #272822; color: #f8f8f2; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 0.9em; overflow-x: auto; }
         .footer { margin-top: 50px; font-size: 0.8em; color: #777; text-align: center; }
@@ -27,8 +29,8 @@
     <div class="header">
         <h1>🦈 LookingTheShark</h1>
         <h2>Network Forensics Analysis Report</h2>
-        <p><strong>Capture Analysed:</strong> <code>{{ capture.nombre }}</code></p>
-        <p><strong>Packets:</strong> {{ capture.paquetes }} | <strong>Duration:</strong> {{ capture.duracion }}</p>
+        <p><strong>Capture Analysed:</strong> <code>{{ capture.name }}</code></p>
+        <p><strong>Packets:</strong> {{ capture.packets }} | <strong>Duration:</strong> {{ capture.duration }}</p>
     </div>
 
     <h2>Executive Summary</h2>
@@ -37,19 +39,19 @@
     <h2>Findings Detail</h2>
 
     {% for f in findings %}
-    <div class="finding sev-{{ f.severidad }}">
-        <h3><span class="badge bg-{{ f.severidad }}">{{ f.severidad|upper }}</span> {{ f.titulo }}</h3>
-        <p><strong>Description:</strong> {{ f.descripcion }}</p>
+    <div class="finding sev-{{ f.severity }}">
+        <h3><span class="badge bg-{{ f.severity }}">{{ f.severity|upper }}</span> {{ f.title }}</h3>
+        <p><strong>Description:</strong> {{ f.description }}</p>
 
         <p><strong>Evidence:</strong></p>
-        <div class="evidence">{{ f.evidencia }}</div>
+        <div class="evidence">{{ f.evidence }}</div>
 
         <ul style="margin-top: 15px;">
-            <li><strong>Detecting Module:</strong> <code>{{ f.modulo }}</code></li>
+            <li><strong>Detecting Module:</strong> <code>{{ f.module }}</code></li>
             {% if f.mitre_name %}
             <li><strong>MITRE ATT&CK Technique:</strong> {{ f.mitre_name }}</li>
             {% endif %}
-            <li><strong>Analyser Confidence:</strong> {{ f.confianza|capitalize }}</li>
+            <li><strong>Analyser Confidence:</strong> {{ f.confidence|capitalize }}</li>
         </ul>
     </div>
     {% else %}

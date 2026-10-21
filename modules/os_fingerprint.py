@@ -14,8 +14,8 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from modules import Finding, Confianza, safe_get_attr, safe_int
-from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
+from modules import Finding, Confidence, safe_get_attr, safe_int
+from ui.theme import module_header, module_footer, severity_style
 
 
 MODULE_NUM  = 5
@@ -69,11 +69,11 @@ def _match_signature(initial_ttl: int, window: int, tcp_options_str: str) -> dic
     # 3. Fallback to TTL
     if not best_match:
         if initial_ttl == 128:
-            return {"os": "Windows (generic)", "family": "Windows", "confidence": "baja"}
+            return {"os": "Windows (generic)", "family": "Windows", "confidence": "low"}
         elif initial_ttl == 64:
-            return {"os": "Linux/macOS (generic)", "family": "Unix-like", "confidence": "baja"}
+            return {"os": "Linux/macOS (generic)", "family": "Unix-like", "confidence": "low"}
         elif initial_ttl == 255:
-            return {"os": "Network Device (Cisco/etc)", "family": "Network", "confidence": "baja"}
+            return {"os": "Network Device (Cisco/etc)", "family": "Network", "confidence": "low"}
             
     return best_match
 
@@ -168,7 +168,7 @@ def passive_fingerprint(packets) -> dict:
 def run(packets, config: dict, console: Console) -> List[Finding]:
     """Executes OS fingerprint analysis."""
     findings = []
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     fps = passive_fingerprint(packets)
     uas = extract_user_agents(packets)
@@ -177,24 +177,24 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     # ── Passive TCP Fingerprints ───────────────────────
     if fps:
         console.print("  [bold white]Passive TCP Fingerprinting (SYN packets):[/]")
-        tabla = Table(
-            show_header=True, header_style="tabla_header",
-            box=box.SIMPLE_HEAVY, border_style="tabla_border", padding=(0, 1)
+        table = Table(
+            show_header=True, header_style="table_header",
+            box=box.SIMPLE_HEAVY, border_style="table_border", padding=(0, 1)
         )
-        tabla.add_column("Source IP", style="bold cyan", width=16)
-        tabla.add_column("Probable OS", width=25)
-        tabla.add_column("TTL (obs/est)", justify="right", width=15)
-        tabla.add_column("Window", justify="right", width=10)
+        table.add_column("Source IP", style="bold cyan", width=16)
+        table.add_column("Probable OS", width=25)
+        table.add_column("TTL (obs/est)", justify="right", width=15)
+        table.add_column("Window", justify="right", width=10)
         
         for ip, fp in list(fps.items())[:15]:
             match = fp["match"]
             os_name = match["os"] if match else "Unknown"
-            tabla.add_row(
+            table.add_row(
                 ip, os_name,
                 f"{fp['observed_ttl']} / {fp['initial_ttl']}",
                 str(fp['window'])
             )
-        console.print(tabla)
+        console.print(table)
         console.print()
     else:
         console.print("  [dim]No TCP SYN packets detected for fingerprinting.[/]")
@@ -215,5 +215,5 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
             console.print(f"    [bold cyan]{b['ip']}:{b['port']}[/] ({b['service']}) -> [white]{b['banner'][:60]}[/]")
         console.print()
 
-    console.print(pie_modulo())
+    console.print(module_footer())
     return findings

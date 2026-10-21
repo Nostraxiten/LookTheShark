@@ -39,8 +39,8 @@ class TestArpAnomalies:
         ]
         findings = detect_arp_anomalies(pkts)
         assert len(findings) == 1
-        assert "192.168.1.1" in findings[0].titulo
-        assert findings[0].severidad == "critico"
+        assert "192.168.1.1" in findings[0].title
+        assert findings[0].severity == "critical"
 
 
 # ── DHCP Rogue Tests ──────────────────────────────────────────────────────────
@@ -73,11 +73,11 @@ class TestDhcpRogue:
         ]
         findings = detect_dhcp_rogue(pkts)
         assert len(findings) == 1
-        assert findings[0].patron == "dhcp_rogue"
-        assert "0xdeadbeef" in findings[0].descripcion
-        assert "00:11:22:33:44:55" in findings[0].evidencia
-        assert "aa:bb:cc:dd:ee:ff" in findings[0].evidencia
-        assert findings[0].severidad == "alto"
+        assert findings[0].pattern == "dhcp_rogue"
+        assert "0xdeadbeef" in findings[0].description
+        assert "00:11:22:33:44:55" in findings[0].evidence
+        assert "aa:bb:cc:dd:ee:ff" in findings[0].evidence
+        assert findings[0].severity == "high"
 
     def test_bootp_layer_fallback(self):
         """Verify fallback when layer is named bootp instead of dhcp."""
@@ -93,4 +93,4 @@ class TestDhcpRogue:
         ]
         findings = detect_dhcp_rogue(pkts)
         assert len(findings) == 1
-        assert findings[0].patron == "dhcp_rogue"
+        assert findings[0].pattern == "dhcp_rogue"

@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.table import Table
 
 from modules import safe_get_attr, safe_int
-from ui.theme import cabecera_modulo, pie_modulo
+from ui.theme import module_header, module_footer
 
 
 MODULE_NUM  = 12
@@ -124,11 +124,11 @@ def _print_set_diff(
 
 def run(packets1, packets2, config: dict, console: Console) -> None:
     """Perform a diff between two parsed captures and report what changed."""
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     if not packets1 or not packets2:
         console.print("  [bold red]ERROR: Missing data — both captures are required for comparison.[/]")
-        console.print(pie_modulo())
+        console.print(module_footer())
         return
 
     console.print("  [dim]Building network profiles for both captures...[/]")
@@ -233,4 +233,4 @@ def run(packets1, packets2, config: dict, console: Console) -> None:
         console.print(vol_tbl)
         console.print()
 
-    console.print(pie_modulo())
+    console.print(module_footer())

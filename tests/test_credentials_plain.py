@@ -142,10 +142,10 @@ class TestHttpPostCredentialDetection:
         body = "username=jefe&password=s3cr3tP%40ss&submit=Login"
         pkt = _make_http_post_pkt(body)
         findings = detect_cleartext_creds([pkt])
-        post_findings = [f for f in findings if "HTTP POST" in f.titulo]
+        post_findings = [f for f in findings if "HTTP POST" in f.title]
         assert len(post_findings) >= 1, (
             "Expected at least one finding for HTTP POST with password field, "
-            f"but got none. All findings: {[f.titulo for f in findings]}"
+            f"but got none. All findings: {[f.title for f in findings]}"
         )
 
     def test_post_with_passwd_variant_produces_finding(self):
@@ -153,7 +153,7 @@ class TestHttpPostCredentialDetection:
         body = "user=alice&passwd=mypass123"
         pkt = _make_http_post_pkt(body)
         findings = detect_cleartext_creds([pkt])
-        post_findings = [f for f in findings if "HTTP POST" in f.titulo]
+        post_findings = [f for f in findings if "HTTP POST" in f.title]
         assert len(post_findings) >= 1
 
     def test_post_with_pwd_variant_produces_finding(self):
@@ -161,7 +161,7 @@ class TestHttpPostCredentialDetection:
         body = "login=bob&pwd=abc123"
         pkt = _make_http_post_pkt(body)
         findings = detect_cleartext_creds([pkt])
-        post_findings = [f for f in findings if "HTTP POST" in f.titulo]
+        post_findings = [f for f in findings if "HTTP POST" in f.title]
         assert len(post_findings) >= 1
 
     def test_post_without_credential_fields_no_finding(self):
@@ -169,7 +169,7 @@ class TestHttpPostCredentialDetection:
         body = "search=sharks&category=fish"
         pkt = _make_http_post_pkt(body)
         findings = detect_cleartext_creds([pkt])
-        post_findings = [f for f in findings if "HTTP POST" in f.titulo]
+        post_findings = [f for f in findings if "HTTP POST" in f.title]
         assert post_findings == []
 
     def test_case_insensitive_field_detection(self):
@@ -177,7 +177,7 @@ class TestHttpPostCredentialDetection:
         body = "USERNAME=admin&PASSWORD=secret"
         pkt = _make_http_post_pkt(body)
         findings = detect_cleartext_creds([pkt])
-        post_findings = [f for f in findings if "HTTP POST" in f.titulo]
+        post_findings = [f for f in findings if "HTTP POST" in f.title]
         assert len(post_findings) >= 1
 
 
@@ -190,26 +190,26 @@ class TestTelnetCredentialExtraction:
     def test_telnet_login_sequence_produces_finding(self):
         pkts = _make_telnet_sequence(username="root", password="topsecret")
         findings = detect_cleartext_creds(pkts)
-        telnet_findings = [f for f in findings if "Telnet" in f.titulo]
+        telnet_findings = [f for f in findings if "Telnet" in f.title]
         assert len(telnet_findings) >= 1, (
             "Expected a Telnet credential finding but got none. "
-            f"All findings: {[f.titulo for f in findings]}"
+            f"All findings: {[f.title for f in findings]}"
         )
 
     def test_telnet_finding_is_critical(self):
         pkts = _make_telnet_sequence()
         findings = detect_cleartext_creds(pkts)
-        telnet_findings = [f for f in findings if "Telnet" in f.titulo]
+        telnet_findings = [f for f in findings if "Telnet" in f.title]
         assert telnet_findings, "No Telnet finding produced."
-        assert telnet_findings[0].severidad == "critico"
+        assert telnet_findings[0].severity == "critical"
 
     def test_telnet_password_is_masked(self):
         """The actual password must NOT appear in the finding description."""
         pkts = _make_telnet_sequence(username="root", password="s3cr3tP@ss")
         findings = detect_cleartext_creds(pkts)
-        telnet_findings = [f for f in findings if "Telnet" in f.titulo]
+        telnet_findings = [f for f in findings if "Telnet" in f.title]
         assert telnet_findings, "No Telnet finding produced."
-        desc = telnet_findings[0].descripcion
+        desc = telnet_findings[0].description
         assert "s3cr3tP@ss" not in desc, (
             f"Password was exposed in finding description: {desc}"
         )
@@ -219,9 +219,9 @@ class TestTelnetCredentialExtraction:
         """The username should appear (unmasked) in the finding description."""
         pkts = _make_telnet_sequence(username="admin", password="pass")
         findings = detect_cleartext_creds(pkts)
-        telnet_findings = [f for f in findings if "Telnet" in f.titulo]
+        telnet_findings = [f for f in findings if "Telnet" in f.title]
         assert telnet_findings
-        desc = telnet_findings[0].descripcion
+        desc = telnet_findings[0].description
         assert "admin" in desc, f"Username not found in description: {desc}"
 
     def test_no_false_positive_on_normal_telnet_data(self):
@@ -233,7 +233,7 @@ class TestTelnetCredentialExtraction:
         pkt.tcp.dstport = "54321"
         pkt.telnet.data = "Welcome to the server!\r\n"
         findings = detect_cleartext_creds([pkt])
-        telnet_findings = [f for f in findings if "Telnet" in f.titulo]
+        telnet_findings = [f for f in findings if "Telnet" in f.title]
         assert telnet_findings == [], (
-            f"False positive on non-credential Telnet data: {[f.titulo for f in telnet_findings]}"
+            f"False positive on non-credential Telnet data: {[f.title for f in telnet_findings]}"
         )

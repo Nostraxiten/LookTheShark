@@ -14,7 +14,7 @@ from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich import box
 
-from ui.theme import SHARK_THEME, ICONOS, SEPARADOR
+from ui.theme import SHARK_THEME, ICONS, SEPARATOR
 
 
 # ──────────────────────────────────────────────────────
@@ -36,63 +36,63 @@ MENU_ITEMS = [
 ]
 
 
-def solicitar_archivo(console: Console) -> Optional[str]:
+def prompt_file(console: Console) -> Optional[str]:
     """Requests the pcap file path from the user."""
-    console.print(f"  {ICONOS['file']} [bold white]Capture file path (.pcap / .pcapng):[/]")
+    console.print(f"  {ICONS['file']} [bold white]Capture file path (.pcap / .pcapng):[/]")
     console.print()
 
     while True:
         try:
-            ruta = Prompt.ask("  [bold cyan]File[/]", console=console)
+            path = Prompt.ask("  [bold cyan]File[/]", console=console)
         except (KeyboardInterrupt, EOFError):
             return None
 
-        ruta = ruta.strip().strip('"').strip("'")
+        path = path.strip().strip('"').strip("'")
 
-        if not ruta:
-            console.print(f"  {ICONOS['warn']} [bold yellow]Empty path. Please try again.[/]")
+        if not path:
+            console.print(f"  {ICONS['warn']} [bold yellow]Empty path. Please try again.[/]")
             continue
 
-        if not os.path.isfile(ruta):
-            console.print(f"  {ICONOS['error']} [bold red]File not found: {ruta}[/]")
+        if not os.path.isfile(path):
+            console.print(f"  {ICONS['error']} [bold red]File not found: {path}[/]")
             continue
 
-        ext = os.path.splitext(ruta)[1].lower()
+        ext = os.path.splitext(path)[1].lower()
         if ext not in (".pcap", ".pcapng"):
-            console.print(f"  {ICONOS['warn']} [bold yellow]Unrecognized extension '{ext}'. Expected .pcap or .pcapng.[/]")
+            console.print(f"  {ICONS['warn']} [bold yellow]Unrecognized extension '{ext}'. Expected .pcap or .pcapng.[/]")
             try:
-                continuar = Confirm.ask("  [dim]Continue anyway?[/]", console=console, default=False)
+                proceed = Confirm.ask("  [dim]Continue anyway?[/]", console=console, default=False)
             except (KeyboardInterrupt, EOFError):
                 return None
-            if not continuar:
+            if not proceed:
                 continue
 
-        console.print(f"  {ICONOS['ok']} File: [bold white]{os.path.basename(ruta)}[/] [dim]({os.path.getsize(ruta):,} bytes)[/]")
-        return ruta
+        console.print(f"  {ICONS['ok']} File: [bold white]{os.path.basename(path)}[/] [dim]({os.path.getsize(path):,} bytes)[/]")
+        return path
 
 
-def solicitar_archivo_diff(console: Console) -> Optional[tuple]:
+def prompt_diff_files(console: Console) -> Optional[tuple]:
     """Requests two capture paths for comparison."""
-    console.print(f"  {ICONOS['file']} [bold white]Comparison between two captures:[/]")
+    console.print(f"  {ICONS['file']} [bold white]Comparison between two captures:[/]")
     console.print()
 
-    rutas = []
+    paths = []
     for label in ["Capture BEFORE", "Capture AFTER"]:
         try:
-            ruta = Prompt.ask(f"  [bold cyan]{label}[/]", console=console)
+            path = Prompt.ask(f"  [bold cyan]{label}[/]", console=console)
         except (KeyboardInterrupt, EOFError):
             return None
 
-        ruta = ruta.strip().strip('"').strip("'")
-        if not os.path.isfile(ruta):
-            console.print(f"  {ICONOS['error']} [bold red]File not found: {ruta}[/]")
+        path = path.strip().strip('"').strip("'")
+        if not os.path.isfile(path):
+            console.print(f"  {ICONS['error']} [bold red]File not found: {path}[/]")
             return None
-        rutas.append(ruta)
+        paths.append(path)
 
-    return tuple(rutas)
+    return tuple(paths)
 
 
-def seleccionar_modulos(console: Console) -> Optional[list]:
+def select_modules(console: Console) -> Optional[list]:
     """Shows the tool menu and returns the list of selected module IDs."""
     console.print(f"  [bold white]Select tool:[/]")
     console.print()
@@ -106,20 +106,20 @@ def seleccionar_modulos(console: Console) -> Optional[list]:
     console.print()
 
     try:
-        seleccion = Prompt.ask("  [bold cyan]>[/]", console=console)
+        selection = Prompt.ask("  [bold cyan]>[/]", console=console)
     except (KeyboardInterrupt, EOFError):
         return None
 
-    seleccion = seleccion.strip().upper()
+    selection = selection.strip().upper()
 
-    if seleccion == "0":
+    if selection == "0":
         return None
 
-    if seleccion == "A":
+    if selection == "A":
         return [item["id"] for item in MENU_ITEMS]
 
     # Parse multi-selection (e.g. "1,3,5" or "1 3 5")
-    nums = seleccion.replace(",", " ").split()
+    nums = selection.replace(",", " ").split()
     ids = []
     valid_nums = {item["num"]: item["id"] for item in MENU_ITEMS}
 
@@ -127,16 +127,16 @@ def seleccionar_modulos(console: Console) -> Optional[list]:
         if n in valid_nums:
             ids.append(valid_nums[n])
         else:
-            console.print(f"  {ICONOS['warn']} [bold yellow]Option '{n}' not recognized, ignored.[/]")
+            console.print(f"  {ICONS['warn']} [bold yellow]Option '{n}' not recognized, ignored.[/]")
 
     if not ids:
-        console.print(f"  {ICONOS['error']} [bold red]No module selected.[/]")
+        console.print(f"  {ICONS['error']} [bold red]No module selected.[/]")
         return None
 
     return ids
 
 
-def solicitar_exportacion(console: Console) -> Optional[str]:
+def prompt_export_format(console: Console) -> Optional[str]:
     """Asks for the report export format."""
     console.print()
     console.print(f"  [bold white]Export format:[/]")
@@ -148,37 +148,37 @@ def solicitar_exportacion(console: Console) -> Optional[str]:
     console.print()
 
     try:
-        opcion = Prompt.ask("  [bold cyan]>[/]", console=console, default="1")
+        option = Prompt.ask("  [bold cyan]>[/]", console=console, default="1")
     except (KeyboardInterrupt, EOFError):
         return None
 
-    mapa = {
+    mapping = {
         "1": "md",
         "2": "json",
         "3": "html",
         "4": "md,json,html",
         "0": None,
     }
-    return mapa.get(opcion.strip(), "md")
+    return mapping.get(option.strip(), "md")
 
 
-def solicitar_ruta_salida(console: Console, formatos: str, nombre_base: str) -> str:
+def prompt_output_path(console: Console, formats: str, base_name: str) -> str:
     """Suggests an output path and allows the user to change it."""
-    default = f"report_{nombre_base}"
+    default = f"report_{base_name}"
     console.print(f"  [dim]Report base name (without extension):[/]")
 
     try:
-        nombre = Prompt.ask("  [bold cyan]Report[/]", console=console, default=default)
+        name = Prompt.ask("  [bold cyan]Report[/]", console=console, default=default)
     except (KeyboardInterrupt, EOFError):
-        nombre = default
+        name = default
 
-    return nombre.strip()
+    return name.strip()
 
 
-def mostrar_resumen_captura(console: Console, info: dict) -> None:
+def show_capture_summary(console: Console, info: dict) -> None:
     """Displays loaded capture information."""
     console.print(
-        f"  {ICONOS['shark']} Loaded capture: [bold white]{info.get('nombre', '?')}[/] "
-        f"[dim]({info.get('paquetes', '?')} packets, {info.get('duracion', '?')})[/]"
+        f"  {ICONS['shark']} Loaded capture: [bold white]{info.get('name', '?')}[/] "
+        f"[dim]({info.get('packets', '?')} packets, {info.get('duration', '?')})[/]"
     )
     console.print()

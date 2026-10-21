@@ -175,11 +175,11 @@ class TestExtractDnsQueries:
         # The only destination in these packets is 192.0.2.100 (the client).
         # It must NOT appear as a tunneling target.
         client_findings = [
-            f for f in findings if "192.0.2.100" in f.titulo
+            f for f in findings if "192.0.2.100" in f.title
         ]
         assert client_findings == [], (
             "False-positive: response packets are being counted as queries "
-            f"towards the client IP. Findings: {[f.titulo for f in client_findings]}"
+            f"towards the client IP. Findings: {[f.title for f in client_findings]}"
         )
 
 
@@ -212,13 +212,13 @@ class TestDetectTunneling:
         """20 queries over 2 s to the same resolver → should fire (10 qps > 5.0)."""
         events = self._make_query_events(20, span_s=2.0)
         findings = detect_tunneling(events, threshold=5.0, min_span=1.0)
-        assert any("High DNS query rate" in f.titulo for f in findings)
+        assert any("High DNS query rate" in f.title for f in findings)
 
     def test_high_rate_short_burst_does_not_fire(self):
         """10 queries in 0.5 s (20 qps) but span < min_span → must NOT fire."""
         events = self._make_query_events(10, span_s=0.5)
         findings = detect_tunneling(events, threshold=5.0, min_span=2.0)
-        rate_findings = [f for f in findings if "High DNS query rate" in f.titulo]
+        rate_findings = [f for f in findings if "High DNS query rate" in f.title]
         assert rate_findings == [], (
             "Short burst false-positive: queries over a window shorter than "
             f"min_span should be suppressed. Findings: {rate_findings}"
@@ -228,12 +228,12 @@ class TestDetectTunneling:
         """20 queries over 10 s (2 qps < threshold=5.0) → must NOT fire."""
         events = self._make_query_events(20, span_s=10.0)
         findings = detect_tunneling(events, threshold=5.0, min_span=2.0)
-        rate_findings = [f for f in findings if "High DNS query rate" in f.titulo]
+        rate_findings = [f for f in findings if "High DNS query rate" in f.title]
         assert rate_findings == []
 
     def test_fewer_than_10_queries_does_not_fire(self):
         """8 queries regardless of rate → below minimum count, must NOT fire."""
         events = self._make_query_events(8, span_s=1.0)
         findings = detect_tunneling(events, threshold=5.0, min_span=0.5)
-        rate_findings = [f for f in findings if "High DNS query rate" in f.titulo]
+        rate_findings = [f for f in findings if "High DNS query rate" in f.title]
         assert rate_findings == []

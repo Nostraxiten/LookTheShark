@@ -15,10 +15,10 @@ from datetime import datetime
 # ──────────────────────────────────────────────────────
 # Confidence levels
 # ──────────────────────────────────────────────────────
-class Confianza:
-    ALTA  = "alta"
-    MEDIA = "media"
-    BAJA  = "baja"
+class Confidence:
+    HIGH   = "high"
+    MEDIUM = "medium"
+    LOW    = "low"
 
 
 # ──────────────────────────────────────────────────────
@@ -30,29 +30,29 @@ class Finding:
     """Represents a security finding with a confidence level.
 
     Attributes:
-        titulo:         Short summary of the finding.
-        descripcion:    Detailed explanation.
-        severidad:      'critico' | 'alto' | 'medio' | 'bajo' | 'info'
-        confianza:      Confianza.ALTA / MEDIA / BAJA
-        modulo:         ID of the module that generated the finding.
-        evidencia:      Packets, time range, specific IPs.
+        title:          Short summary of the finding.
+        description:    Detailed explanation.
+        severity:       'critical' | 'high' | 'medium' | 'low' | 'info'
+        confidence:     Confidence.HIGH / MEDIUM / LOW
+        module:         ID of the module that generated the finding.
+        evidence:       Packets, time range, specific IPs.
         mitre_id:       MITRE ATT&CK technique (filled in by mitre_mapping).
         mitre_name:     Name of the MITRE technique.
-        patron:         Internal key for MITRE mapping (e.g. 'portscan').
+        pattern:        Internal key for MITRE mapping (e.g. 'portscan').
         timestamp:      Moment of the finding in the capture (if applicable).
-        interpretacion: Pipe-separated context string (attack | pattern | legit).
+        interpretation: Pipe-separated context string (attack | pattern | legit).
     """
-    titulo: str
-    descripcion: str
-    severidad: str
-    confianza: str
-    modulo: str
-    evidencia: str = ""
+    title: str
+    description: str
+    severity: str
+    confidence: str
+    module: str
+    evidence: str = ""
     mitre_id: str = ""
     mitre_name: str = ""
-    patron: str = ""
+    pattern: str = ""
     timestamp: str = ""
-    interpretacion: str = ""
+    interpretation: str = ""
 
 
 # ──────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ class Finding:
 import ipaddress
 
 
-def es_ip_privada(ip_str: str) -> bool:
+def is_private_ip(ip_str: str) -> bool:
     """Returns True if the IP is private (RFC 1918 / link-local / loopback)."""
     try:
         ip = ipaddress.ip_address(ip_str)
@@ -70,7 +70,7 @@ def es_ip_privada(ip_str: str) -> bool:
         return False
 
 
-def formatear_bytes(n: int) -> str:
+def format_bytes(n: int) -> str:
     """Converts bytes to a human-readable string (KB, MB, GB)."""
     if n < 1024:
         return f"{n} B"
@@ -82,11 +82,11 @@ def formatear_bytes(n: int) -> str:
         return f"{n / (1024 ** 3):.2f} GB"
 
 
-def formatear_duracion(segundos: float) -> str:
+def format_duration(seconds: float) -> str:
     """Converts seconds to HH:MM:SS format."""
-    h = int(segundos // 3600)
-    m = int((segundos % 3600) // 60)
-    s = int(segundos % 60)
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
     if h > 0:
         return f"{h:02d}:{m:02d}:{s:02d}"
     return f"{m:02d}:{s:02d}"

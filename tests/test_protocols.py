@@ -96,46 +96,46 @@ class TestDetectUncommonProtocols:
         """
         pkt = _make_tcp_pkt(23, has_layer=None, highest_layer="DATA")
         findings = detect_uncommon_protocols([pkt])
-        telnet_findings = [f for f in findings if "TELNET" in f.titulo]
+        telnet_findings = [f for f in findings if "TELNET" in f.title]
         assert telnet_findings == [], (
             "False positive: port-23 packet without telnet layer was flagged as TELNET. "
-            f"Findings: {[f.titulo for f in telnet_findings]}"
+            f"Findings: {[f.title for f in telnet_findings]}"
         )
 
     def test_finding_produced_when_dissector_confirms(self):
         """When tshark dissects the packet as Telnet, a finding MUST be produced."""
         pkt = _make_tcp_pkt(23, has_layer="telnet", highest_layer="TELNET")
         findings = detect_uncommon_protocols([pkt])
-        telnet_findings = [f for f in findings if "TELNET" in f.titulo]
+        telnet_findings = [f for f in findings if "TELNET" in f.title]
         assert len(telnet_findings) == 1, (
             "Expected exactly one TELNET finding when dissector confirms the protocol, "
-            f"but got: {[f.titulo for f in findings]}"
+            f"but got: {[f.title for f in findings]}"
         )
 
     def test_ftp_port_without_layer_no_finding(self):
         """Port 21 without FTP dissector layer → no finding."""
         pkt = _make_tcp_pkt(21, has_layer=None, highest_layer="TCP")
         findings = detect_uncommon_protocols([pkt])
-        ftp_findings = [f for f in findings if "FTP" in f.titulo]
+        ftp_findings = [f for f in findings if "FTP" in f.title]
         assert ftp_findings == []
 
     def test_ftp_with_layer_produces_finding(self):
         pkt = _make_tcp_pkt(21, has_layer="ftp", highest_layer="FTP")
         findings = detect_uncommon_protocols([pkt])
-        ftp_findings = [f for f in findings if "FTP" in f.titulo]
+        ftp_findings = [f for f in findings if "FTP" in f.title]
         assert len(ftp_findings) == 1
 
     def test_http_port_without_layer_no_finding(self):
         """Port 80 without HTTP layer (e.g. scan SYN) → no finding."""
         pkt = _make_tcp_pkt(80, has_layer=None, highest_layer="TCP")
         findings = detect_uncommon_protocols([pkt])
-        http_findings = [f for f in findings if "HTTP" in f.titulo]
+        http_findings = [f for f in findings if "HTTP" in f.title]
         assert http_findings == []
 
     def test_http_with_layer_produces_finding(self):
         pkt = _make_tcp_pkt(80, has_layer="http", highest_layer="HTTP")
         findings = detect_uncommon_protocols([pkt])
-        http_findings = [f for f in findings if "HTTP" in f.titulo]
+        http_findings = [f for f in findings if "HTTP" in f.title]
         assert len(http_findings) == 1
 
     def test_baseline_whitelists_known_protocol(self):

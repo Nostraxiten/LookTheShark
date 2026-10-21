@@ -14,10 +14,10 @@ from rich.align import Align
 # ──────────────────────────────────────────────────────
 # Framework version
 # ──────────────────────────────────────────────────────
-VERSION = "1.0.0"
-AUTOR   = "@nostraxiten"
-TAGLINE = "Forensic translator for network captures"
-DISCLAIMER_CORTO = "Analyze only own or authorized captures"
+VERSION    = "1.0.0"
+AUTHOR     = "@nostraxiten"
+TAGLINE    = "Forensic translator for network captures"
+DISCLAIMER = "Analyze only own or authorized captures"
 
 # ──────────────────────────────────────────────────────
 # Banner ASCII 3D
@@ -46,7 +46,7 @@ BANNER_ANSI = (
 )
 
 
-def _soporte_ansi() -> bool:
+def _ansi_supported() -> bool:
     """Detects whether the terminal supports ANSI escape sequences."""
     if sys.platform == "win32":
         try:
@@ -62,11 +62,11 @@ def _soporte_ansi() -> bool:
     return os.environ.get("TERM", "") != "dumb"
 
 
-def mostrar_banner(console: Console) -> None:
+def show_banner(console: Console) -> None:
     """Displays the full LookingTheShark banner in the terminal."""
     console.print()
 
-    if _soporte_ansi():
+    if _ansi_supported():
         sys.stdout.write(BANNER_ANSI)
         sys.stdout.flush()
     else:
@@ -82,11 +82,11 @@ def mostrar_banner(console: Console) -> None:
     )
     console.print(
         Align.center(
-            f"[dim]{DISCLAIMER_CORTO}[/]"
+            f"[dim]{DISCLAIMER}[/]"
         )
     )
     console.print(
-        Align.center(f"[dim]by {AUTOR}[/]")
+        Align.center(f"[dim]by {AUTHOR}[/]")
     )
     console.print()
     console.print(Align.center("[color(240)]" + "═" * 55 + "[/]"))

@@ -13,8 +13,8 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from modules import Finding, Confianza, safe_get_attr
-from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
+from modules import Finding, Confidence, safe_get_attr
+from ui.theme import module_header, module_footer, severity_style
 
 
 MODULE_NUM  = 6
@@ -92,7 +92,7 @@ def analyze_tls(packets) -> tuple:
 
 def run(packets, config: dict, console: Console) -> List[Finding]:
     findings = []
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     snis, ja3_hashes, obsolete = analyze_tls(packets)
     
@@ -110,14 +110,14 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     # ── Obsolete versions ──────────────────────────────
     for src, dst, ver in obsolete:
         findings.append(Finding(
-            titulo=f"Use of obsolete protocol: {ver}",
-            descripcion=f"Detected TLS negotiation using {ver}, which is considered insecure.",
-            severidad="medio",
-            confianza=Confianza.ALTA,
-            modulo=MODULE_ID,
-            evidencia=f"{src} -> {dst}",
-            patron="tls_downgrade",
-            interpretacion=(
+            title=f"Use of obsolete protocol: {ver}",
+            description=f"Detected TLS negotiation using {ver}, which is considered insecure.",
+            severity="medium",
+            confidence=Confidence.HIGH,
+            module=MODULE_ID,
+            evidence=f"{src} -> {dst}",
+            pattern="tls_downgrade",
+            interpretation=(
                 "Downgrade Attack / Insecure TLS Version Negotiation | "
                 "Negotiation of legacy SSLv3/TLS 1.0/TLS 1.1 cipher suites vulnerable to POODLE/BEAST | "
                 "Legacy embedded devices, unupdated operating systems, or internal compatibility constraints"
@@ -140,17 +140,17 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
             
             if risk in ("high", "medium"):
                 findings.append(Finding(
-                    titulo=f"Suspicious JA3 fingerprint: {client}",
-                    descripcion=(
+                    title=f"Suspicious JA3 fingerprint: {client}",
+                    description=(
                         f"Detected TLS client matching known pentest frameworks, "
                         f"C2 tooling, or malware ({client}). Review manually."
                     ),
-                    severidad="alto" if risk == "high" else "medio",
-                    confianza=Confianza.MEDIA,
-                    modulo=MODULE_ID,
-                    evidencia=f"IP: {data['ip']}, JA3: {h}",
-                    patron="unusual_ja3",
-                    interpretacion=(
+                    severity="high" if risk == "high" else "medium",
+                    confidence=Confidence.MEDIUM,
+                    module=MODULE_ID,
+                    evidence=f"IP: {data['ip']}, JA3: {h}",
+                    pattern="unusual_ja3",
+                    interpretation=(
                         "Non-Standard / Malicious TLS Client Fingerprint (JA3) | "
                         "JA3 hash matching known penetration testing frameworks, malware C2, or custom automation tooling | "
                         "Custom Python/Go network utilities, automation scrapers, or development testing tools"
@@ -161,12 +161,12 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     # ── Display findings ───────────────────────────────
     if findings:
         for f in findings:
-            console.print(f"  {estilo_severidad(f.severidad)}  {f.titulo}")
-            console.print(f"      [dim]{f.descripcion}[/]")
+            console.print(f"  {severity_style(f.severity)}  {f.title}")
+            console.print(f"      [dim]{f.description}[/]")
         console.print()
     else:
         console.print("  [bold bright_green][OK][/] [dim]No TLS anomalies (downgrades or suspicious JA3) detected.[/]")
         console.print()
 
-    console.print(pie_modulo())
+    console.print(module_footer())
     return findings

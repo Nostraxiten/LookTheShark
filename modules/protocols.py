@@ -12,8 +12,8 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from modules import Finding, Confianza, safe_get_attr, safe_int
-from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
+from modules import Finding, Confidence, safe_get_attr, safe_int
+from ui.theme import module_header, module_footer, severity_style
 
 
 MODULE_NUM  = 2
@@ -23,7 +23,7 @@ MODULE_ID   = "protocols"
 # ──────────────────────────────────────────────────────
 # Ports -> known service
 # ──────────────────────────────────────────────────────
-SERVICIOS_CONOCIDOS = {
+KNOWN_SERVICES = {
     20: "FTP-Data", 21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP",
     53: "DNS", 67: "DHCP-S", 68: "DHCP-C", 69: "TFTP", 80: "HTTP",
     110: "POP3", 119: "NNTP", 123: "NTP", 135: "RPC", 137: "NetBIOS-NS",
@@ -38,18 +38,18 @@ SERVICIOS_CONOCIDOS = {
 }
 
 # Protocols considered deprecated or risky
-PROTOCOLOS_DEPRECADOS = {
-    "telnet": {"severidad": "alto",  "razon": "Plaintext protocol, replaced by SSH"},
-    "ftp":    {"severidad": "medio", "razon": "Plaintext credentials, prefer SFTP/SCP"},
-    "tftp":   {"severidad": "medio", "razon": "No authentication or encryption"},
-    "snmp":   {"severidad": "medio", "razon": "SNMPv1/v2c transmits community strings in cleartext"},
-    "http":   {"severidad": "bajo",  "razon": "Unencrypted traffic, prefer HTTPS"},
-    "pop3":   {"severidad": "medio", "razon": "Plaintext credentials without TLS"},
-    "nntp":   {"severidad": "bajo",  "razon": "Obsolete protocol"},
+DEPRECATED_PROTOCOLS = {
+    "telnet": {"severity": "high",   "reason": "Plaintext protocol, replaced by SSH"},
+    "ftp":    {"severity": "medium", "reason": "Plaintext credentials, prefer SFTP/SCP"},
+    "tftp":   {"severity": "medium", "reason": "No authentication or encryption"},
+    "snmp":   {"severity": "medium", "reason": "SNMPv1/v2c transmits community strings in cleartext"},
+    "http":   {"severity": "low",    "reason": "Unencrypted traffic, prefer HTTPS"},
+    "pop3":   {"severity": "medium", "reason": "Plaintext credentials without TLS"},
+    "nntp":   {"severity": "low",    "reason": "Obsolete protocol"},
 }
 
 # Ports mapped to deprecated protocols
-PUERTOS_DEPRECADOS = {
+DEPRECATED_PORTS = {
     23:  "telnet",
     21:  "ftp",
     69:  "tftp",
@@ -104,19 +104,19 @@ def _confirmed_by_dissector(pkt, proto_name: str) -> bool:
 
 def protocol_breakdown(packets) -> dict:
     """Counts packets by highest layer protocol."""
-    conteo = defaultdict(int)
+    counter = defaultdict(int)
     for pkt in packets:
         try:
             highest = pkt.highest_layer
-            conteo[highest] += 1
+            counter[highest] += 1
         except Exception:
-            conteo["UNKNOWN"] += 1
-    return dict(sorted(conteo.items(), key=lambda x: x[1], reverse=True))
+            counter["UNKNOWN"] += 1
+    return dict(sorted(counter.items(), key=lambda x: x[1], reverse=True))
 
 
 def port_breakdown(packets) -> dict:
     """Counts packets by destination TCP/UDP port."""
-    conteo = defaultdict(int)
+    counter = defaultdict(int)
 
     for pkt in packets:
         dst_port = None
@@ -126,9 +126,9 @@ def port_breakdown(packets) -> dict:
             dst_port = safe_int(safe_get_attr(pkt, "udp", "dstport"), None)
 
         if dst_port is not None:
-            conteo[dst_port] += 1
+            counter[dst_port] += 1
 
-    return dict(sorted(conteo.items(), key=lambda x: x[1], reverse=True))
+    return dict(sorted(counter.items(), key=lambda x: x[1], reverse=True))
 
 
 def detect_uncommon_protocols(packets, baseline_profile: dict = None) -> List[Finding]:
@@ -152,8 +152,8 @@ def detect_uncommon_protocols(packets, baseline_profile: dict = None) -> List[Fi
         elif hasattr(pkt, "udp"):
             dst_port = safe_int(safe_get_attr(pkt, "udp", "dstport"), None)
 
-        if dst_port is not None and dst_port in PUERTOS_DEPRECADOS:
-            proto = PUERTOS_DEPRECADOS[dst_port]
+        if dst_port is not None and dst_port in DEPRECATED_PORTS:
+            proto = DEPRECATED_PORTS[dst_port]
 
             # Only flag if the dissector confirmed the protocol
             if not _confirmed_by_dissector(pkt, proto):
@@ -161,7 +161,7 @@ def detect_uncommon_protocols(packets, baseline_profile: dict = None) -> List[Fi
 
             if dst_port not in ports_seen:
                 ports_seen.add(dst_port)
-                info = PROTOCOLOS_DEPRECADOS.get(proto, {})
+                info = DEPRECATED_PROTOCOLS.get(proto, {})
 
                 if baseline_profile:
                     expected = baseline_profile.get("expected_protocols", [])
@@ -169,14 +169,14 @@ def detect_uncommon_protocols(packets, baseline_profile: dict = None) -> List[Fi
                         continue
 
                 findings.append(Finding(
-                    titulo=f"Deprecated protocol detected: {proto.upper()} (port {dst_port})",
-                    descripcion=info.get("razon", "Potentially insecure protocol"),
-                    severidad=info.get("severidad", "bajo"),
-                    confianza=Confianza.MEDIA,
-                    modulo=MODULE_ID,
-                    evidencia=f"Destination port {dst_port} observed in capture",
-                    patron="cleartext_protocol",
-                    interpretacion=(
+                    title=f"Deprecated protocol detected: {proto.upper()} (port {dst_port})",
+                    description=info.get("reason", "Potentially insecure protocol"),
+                    severity=info.get("severity", "low"),
+                    confidence=Confidence.MEDIUM,
+                    module=MODULE_ID,
+                    evidence=f"Destination port {dst_port} observed in capture",
+                    pattern="cleartext_protocol",
+                    interpretation=(
                         "Insecure / Cleartext Protocol Usage (Network Sniffing) | "
                         "Unencrypted or deprecated protocol communication observed on standard port | "
                         "Legacy network management, embedded systems, local debugging, or lab test environment"
@@ -190,7 +190,7 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     """Executes protocol analysis."""
     findings = []
 
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     proto_stats = protocol_breakdown(packets)
     port_stats  = port_breakdown(packets)
@@ -199,22 +199,22 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     console.print("  [bold white]Protocol Breakdown:[/]")
     console.print()
 
-    tabla = Table(
+    table = Table(
         show_header=True,
-        header_style="tabla_header",
+        header_style="table_header",
         box=box.SIMPLE_HEAVY,
-        border_style="tabla_border",
+        border_style="table_border",
         padding=(0, 1),
     )
-    tabla.add_column("Protocol", style="bold cyan", width=20)
-    tabla.add_column("Packets", justify="right", width=12)
-    tabla.add_column("% of Total", justify="right", width=12)
+    table.add_column("Protocol", style="bold cyan", width=20)
+    table.add_column("Packets", justify="right", width=12)
+    table.add_column("% of Total", justify="right", width=12)
 
     total_pkts = sum(proto_stats.values())
     for proto, count in list(proto_stats.items())[:15]:
         pct = (count / total_pkts * 100) if total_pkts > 0 else 0
-        tabla.add_row(proto, f"{count:,}", f"{pct:.1f}%")
-    console.print(tabla)
+        table.add_row(proto, f"{count:,}", f"{pct:.1f}%")
+    console.print(table)
     console.print()
 
     # ── Port Table ─────────────────────────────────────
@@ -222,39 +222,39 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
         console.print("  [bold white]Most Frequent Ports:[/]")
         console.print()
 
-        tabla_p = Table(
+        table_p = Table(
             show_header=True,
-            header_style="tabla_header",
+            header_style="table_header",
             box=box.SIMPLE_HEAVY,
-            border_style="tabla_border",
+            border_style="table_border",
             padding=(0, 1),
         )
-        tabla_p.add_column("Port", style="bold cyan", width=10)
-        tabla_p.add_column("Service", width=18)
-        tabla_p.add_column("Packets", justify="right", width=12)
+        table_p.add_column("Port", style="bold cyan", width=10)
+        table_p.add_column("Service", width=18)
+        table_p.add_column("Packets", justify="right", width=12)
 
         for port, count in list(port_stats.items())[:12]:
-            svc = SERVICIOS_CONOCIDOS.get(port, f"port/{port}")
-            tabla_p.add_row(str(port), svc, f"{count:,}")
-        console.print(tabla_p)
+            svc = KNOWN_SERVICES.get(port, f"port/{port}")
+            table_p.add_row(str(port), svc, f"{count:,}")
+        console.print(table_p)
         console.print()
 
     # ── Deprecated Protocols ───────────────────────────
     baseline = config.get("baseline_profile")
-    deprecados = detect_uncommon_protocols(packets, baseline)
-    findings.extend(deprecados)
+    deprecated_findings = detect_uncommon_protocols(packets, baseline)
+    findings.extend(deprecated_findings)
 
-    if deprecados:
+    if deprecated_findings:
         console.print("  [bold yellow]Deprecated/Insecure protocols detected:[/]")
-        for f in deprecados:
-            console.print(f"  {estilo_severidad(f.severidad)}  {f.titulo}")
-            console.print(f"      [dim]{f.descripcion}[/]")
+        for f in deprecated_findings:
+            console.print(f"  {severity_style(f.severity)}  {f.title}")
+            console.print(f"      [dim]{f.description}[/]")
             console.print(f"      [dim]Review manually.[/]")
         console.print()
     else:
         console.print("  [bold bright_green][OK][/] [dim]No deprecated protocols detected.[/]")
         console.print()
 
-    console.print(pie_modulo())
+    console.print(module_footer())
 
     return findings

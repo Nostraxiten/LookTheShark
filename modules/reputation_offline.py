@@ -11,8 +11,8 @@ from typing import List
 
 from rich.console import Console
 
-from modules import Finding, Confianza, safe_get_attr, es_ip_privada
-from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
+from modules import Finding, Confidence, safe_get_attr, is_private_ip
+from ui.theme import module_header, module_footer, severity_style
 
 
 MODULE_NUM  = 9
@@ -62,8 +62,8 @@ def extract_entities(packets) -> tuple:
     for pkt in packets:
         src = safe_get_attr(pkt, "ip", "src")
         dst = safe_get_attr(pkt, "ip", "dst")
-        if src and not es_ip_privada(src): ips.add(src)
-        if dst and not es_ip_privada(dst): ips.add(dst)
+        if src and not is_private_ip(src): ips.add(src)
+        if dst and not is_private_ip(dst): ips.add(dst)
         
         if hasattr(pkt, "dns"):
             query_name = safe_get_attr(pkt, "dns", "qry_name", "")
@@ -85,52 +85,52 @@ def extract_entities(packets) -> tuple:
 
 def run(packets, config: dict, console: Console) -> List[Finding]:
     findings = []
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     _load_feeds()
     
     if not _FEEDS["ips"] and not _FEEDS["domains"]:
         console.print("  [dim]No local reputation feeds found in data/reputation_feeds/.[/]")
         console.print("  [dim]Offline cross-check will not report findings.[/]")
-        console.print(pie_modulo())
+        console.print(module_footer())
         return findings
         
-    ips_vistas, dominios_vistos = extract_entities(packets)
+    ips_seen, domains_seen = extract_entities(packets)
     
-    ips_maliciosas = ips_vistas.intersection(_FEEDS["ips"])
-    dominios_maliciosos = dominios_vistos.intersection(_FEEDS["domains"])
+    malicious_ips = ips_seen.intersection(_FEEDS["ips"])
+    malicious_domains = domains_seen.intersection(_FEEDS["domains"])
     
     console.print(f"  Feeds loaded: [bold white]{len(_FEEDS['ips']):,}[/] IPs, [bold white]{len(_FEEDS['domains']):,}[/] domains.")
-    console.print(f"  Entities in capture: {len(ips_vistas):,} IPs, {len(dominios_vistos):,} domains.")
+    console.print(f"  Entities in capture: {len(ips_seen):,} IPs, {len(domains_seen):,} domains.")
     console.print()
 
     # Generate findings
-    for ip in ips_maliciosas:
+    for ip in malicious_ips:
         findings.append(Finding(
-            titulo=f"Malicious IP contacted: {ip}",
-            descripcion="This IP matches entries in local reputation feeds. Could indicate C2, malware, or scanners.",
-            severidad="alto",
-            confianza=Confianza.ALTA,
-            modulo=MODULE_ID,
-            evidencia=f"Destination/Source IP: {ip}",
+            title=f"Malicious IP contacted: {ip}",
+            description="This IP matches entries in local reputation feeds. Could indicate C2, malware, or scanners.",
+            severity="high",
+            confidence=Confidence.HIGH,
+            module=MODULE_ID,
+            evidence=f"Destination/Source IP: {ip}",
         ))
         
-    for dom in dominios_maliciosos:
+    for dom in malicious_domains:
         findings.append(Finding(
-            titulo=f"Malicious domain contacted: {dom}",
-            descripcion="This domain matches entries in local reputation feeds. Could indicate phishing, C2, or malware.",
-            severidad="alto",
-            confianza=Confianza.ALTA,
-            modulo=MODULE_ID,
-            evidencia=f"Queried domain / SNI: {dom}",
+            title=f"Malicious domain contacted: {dom}",
+            description="This domain matches entries in local reputation feeds. Could indicate phishing, C2, or malware.",
+            severity="high",
+            confidence=Confidence.HIGH,
+            module=MODULE_ID,
+            evidence=f"Queried domain / SNI: {dom}",
         ))
 
     if findings:
         console.print(f"  [bold bright_red][!] Matches found in local reputation feeds![/]")
         console.print()
         for f in findings[:10]:
-            console.print(f"  {estilo_severidad(f.severidad)}  {f.titulo}")
-            console.print(f"      [dim]{f.descripcion}[/]")
+            console.print(f"  {severity_style(f.severity)}  {f.title}")
+            console.print(f"      [dim]{f.description}[/]")
         if len(findings) > 10:
             console.print(f"  [dim]... and {len(findings)-10} more matches.[/]")
         console.print()
@@ -138,5 +138,5 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
         console.print("  [bold bright_green][OK][/] [dim]No captured IP or domain matched local reputation feeds.[/]")
         console.print()
 
-    console.print(pie_modulo())
+    console.print(module_footer())
     return findings

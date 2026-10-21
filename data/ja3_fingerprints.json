@@ -1,5 +1,5 @@
 {
-  "_comment": "JA3 fingerprints de clientes TLS conocidos. Fuente: ja3er.com / código abierto.",
+  "_comment": "JA3 fingerprints of known TLS clients. Source: ja3er.com / open source.",
   "fingerprints": {
     "e7d705a3286e19ea42f587b344ee6865": {"client": "Chrome 100+", "category": "browser", "risk": "none"},
     "b32309a26951912be7dba376398abc3b": {"client": "Chrome 80-99", "category": "browser", "risk": "none"},

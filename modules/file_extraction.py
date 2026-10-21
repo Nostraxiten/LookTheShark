@@ -19,8 +19,8 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from modules import Finding, Confianza
-from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
+from modules import Finding, Confidence, format_bytes
+from ui.theme import module_header, module_footer, severity_style
 
 
 MODULE_NUM  = 4
@@ -52,13 +52,13 @@ MAGIC_SIGNATURES = {
     b"\x23\x21":                       "Script (shebang)",
 }
 
-EXTENSIONES_PELIGROSAS = {
+DANGEROUS_EXTENSIONS = {
     ".exe", ".dll", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".wsf",
     ".msi", ".scr", ".pif", ".com", ".hta", ".cpl",
     ".elf", ".sh", ".bin", ".run",
 }
 
-EXTENSIONES_INOCUAS = {
+HARMLESS_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".ico",
     ".txt", ".csv", ".log", ".xml", ".json",
     ".mp3", ".wav", ".ogg", ".mp4", ".avi", ".mkv",
@@ -83,9 +83,9 @@ def compute_entropy(filepath: str) -> float:
 
 def detect_magic(data: bytes) -> str:
     """Detects file type using magic bytes."""
-    for sig, tipo in MAGIC_SIGNATURES.items():
+    for sig, file_type in MAGIC_SIGNATURES.items():
         if data[:len(sig)] == sig:
-            return tipo
+            return file_type
     # ASCII text check
     try:
         sample = data[:512]
@@ -195,20 +195,20 @@ def detect_filetype_mismatch(extracted_files: list) -> List[Finding]:
             for kw in ["executable", "elf", "pe ", "script"]
         )
 
-        if ext in EXTENSIONES_INOCUAS and is_executable_content:
+        if ext in HARMLESS_EXTENSIONS and is_executable_content:
             findings.append(Finding(
-                titulo=f"File type mismatch: {finfo['filename']} ({magic_type})",
-                descripcion=(
+                title=f"File type mismatch: {finfo['filename']} ({magic_type})",
+                description=(
                     f"File has extension '{ext}' but magic bytes indicate "
                     f"'{magic_type}'. Strong indicator of evasion / masqueraded file. "
                     f"Review manually."
                 ),
-                severidad="alto",
-                confianza=Confianza.ALTA,
-                modulo=MODULE_ID,
-                evidencia=f"Protocol: {finfo['protocol']}, Size: {finfo['size']} bytes",
-                patron="file_transfer_mismatch",
-                interpretacion=(
+                severity="high",
+                confidence=Confidence.HIGH,
+                module=MODULE_ID,
+                evidence=f"Protocol: {finfo['protocol']}, Size: {finfo['size']} bytes",
+                pattern="file_transfer_mismatch",
+                interpretation=(
                     "Masquerading: Masquerade File Type | "
                     "File extension mismatch against magic bytes header (executable disguised as document/media) | "
                     "Inadvertent file renaming, legacy system quirks, or unusual application container format"
@@ -237,17 +237,17 @@ def detect_high_entropy(extracted_files: list) -> List[Finding]:
 
         if score > 7.2 and not is_compressed:
             findings.append(Finding(
-                titulo=f"High entropy payload: {finfo['filename']} (Entropy: {score:.2f})",
-                descripcion=(
+                title=f"High entropy payload: {finfo['filename']} (Entropy: {score:.2f})",
+                description=(
                     f"File '{finfo['filename']}' has a Shannon entropy score of {score:.2f}/8.00 "
                     f"without matching a known compressed format. This suggests encrypted, packed, or obfuscated content."
                 ),
-                severidad="medio",
-                confianza=Confianza.MEDIA,
-                modulo=MODULE_ID,
-                evidencia=f"File: {finfo['filename']}, Entropy: {score:.2f}, Size: {finfo['size']} bytes",
-                patron="data_encoding",
-                interpretacion=(
+                severity="medium",
+                confidence=Confidence.MEDIUM,
+                module=MODULE_ID,
+                evidence=f"File: {finfo['filename']}, Entropy: {score:.2f}, Size: {finfo['size']} bytes",
+                pattern="data_encoding",
+                interpretation=(
                     "Obfuscated / Encrypted File Transfer (Data Encoding) | "
                     "Shannon entropy above 7.2/8.0 in a non-standard archive format suggesting encrypted or packed payload | "
                     "Proprietary encrypted database formats, compiled binaries, custom compressed assets, or encrypted configuration files"
@@ -261,12 +261,12 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     """Executes file extraction and analysis."""
     findings = []
 
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     pcap_path = config.get("pcap_path", "")
     if not pcap_path:
         console.print("  [dim]No pcap path provided for extraction.[/]")
-        console.print(pie_modulo())
+        console.print(module_footer())
         return findings
 
     output_dir = config.get("extract_dir", "")
@@ -280,7 +280,7 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     if not extracted:
         console.print("  [dim]No transferred files extracted.[/]")
         console.print(f"  [dim](Verify that tshark is installed and on PATH)[/]")
-        console.print(pie_modulo())
+        console.print(module_footer())
         return findings
 
     console.print(f"  Extracted files: [bold white]{len(extracted)}[/]")
@@ -288,21 +288,21 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     console.print()
 
     # ── File Table ─────────────────────────────────────
-    tabla = Table(
+    table = Table(
         show_header=True,
-        header_style="tabla_header",
+        header_style="table_header",
         box=box.SIMPLE_HEAVY,
-        border_style="tabla_border",
+        border_style="table_border",
         padding=(0, 1),
     )
-    tabla.add_column("Protocol", style="bold cyan", width=8)
-    tabla.add_column("File", width=22)
-    tabla.add_column("Ext", width=6)
-    tabla.add_column("Size", justify="right", width=9)
-    tabla.add_column("Timestamp", style="dim", width=19)
-    tabla.add_column("Entropy", width=14)
-    tabla.add_column("Type (magic)", width=20)
-    tabla.add_column("MD5", style="dim", width=16)
+    table.add_column("Protocol", style="bold cyan", width=8)
+    table.add_column("File", width=22)
+    table.add_column("Ext", width=6)
+    table.add_column("Size", justify="right", width=9)
+    table.add_column("Timestamp", style="dim", width=19)
+    table.add_column("Entropy", width=14)
+    table.add_column("Type (magic)", width=20)
+    table.add_column("MD5", style="dim", width=16)
 
     for finfo in extracted[:20]:
         try:
@@ -321,19 +321,18 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
         finfo["magic_type"] = magic_type
         finfo["hashes"] = hashes if "hashes" in locals() else {}
 
-        from modules import formatear_bytes
-        tabla.add_row(
+        table.add_row(
             finfo["protocol"],
             finfo["filename"][:22],
             finfo.get("extension", "") or "-",
-            formatear_bytes(finfo["size"]),
+            format_bytes(finfo["size"]),
             finfo.get("timestamp", "-"),
             finfo.get("entropy_label", "-"),
             magic_type[:20],
             md5_short,
         )
 
-    console.print(tabla)
+    console.print(table)
     console.print()
 
     # ── Mismatch & Entropy Detection ───────────────────
@@ -345,12 +344,12 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
 
     if findings:
         for f in findings:
-            console.print(f"  {estilo_severidad(f.severidad)}  {f.titulo}")
-            console.print(f"      [dim]{f.descripcion}[/]")
+            console.print(f"  {severity_style(f.severity)}  {f.title}")
+            console.print(f"      [dim]{f.description}[/]")
         console.print()
     else:
         console.print("  [bold bright_green][OK][/] [dim]No file type mismatches or suspicious high-entropy payloads detected.[/]")
         console.print()
 
-    console.print(pie_modulo())
+    console.print(module_footer())
     return findings

@@ -12,8 +12,8 @@ from typing import List
 
 from rich.console import Console
 
-from modules import Finding, Confianza, safe_get_attr
-from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
+from modules import Finding, Confidence, safe_get_attr
+from ui.theme import module_header, module_footer, severity_style
 
 
 MODULE_NUM  = 7
@@ -105,14 +105,14 @@ def detect_cleartext_creds(packets) -> List[Finding]:
                 if key not in seen:
                     seen.add(key)
                     findings.append(Finding(
-                        titulo="Cleartext credentials (HTTP Basic Auth)",
-                        descripcion=f"Captured Base64-encoded credentials transmitted unencrypted: {user_pass.split(':')[0]}:***",
-                        severidad="critico",
-                        confianza=Confianza.ALTA,
-                        modulo=MODULE_ID,
-                        evidencia=f"{src} -> {dst} (HTTP)",
-                        patron="cleartext_creds",
-                        interpretacion=(
+                        title="Cleartext credentials (HTTP Basic Auth)",
+                        description=f"Captured Base64-encoded credentials transmitted unencrypted: {user_pass.split(':')[0]}:***",
+                        severity="critical",
+                        confidence=Confidence.HIGH,
+                        module=MODULE_ID,
+                        evidence=f"{src} -> {dst} (HTTP)",
+                        pattern="cleartext_creds",
+                        interpretation=(
                             "Unencrypted Authentication Transmission / Credential Exposure | "
                             "Base64 encoded authentication header sent over cleartext HTTP | "
                             "Legacy internal services, local intranet testing, or misconfigured reverse proxy not enforcing HTTPS redirect"
@@ -129,17 +129,17 @@ def detect_cleartext_creds(packets) -> List[Finding]:
                 if key not in seen:
                     seen.add(key)
                     findings.append(Finding(
-                        titulo="Possible cleartext credentials (HTTP POST)",
-                        descripcion=(
+                        title="Possible cleartext credentials (HTTP POST)",
+                        description=(
                             "Detected form submission via unencrypted HTTP containing "
                             "password/credential fields."
                         ),
-                        severidad="alto",
-                        confianza=Confianza.MEDIA,
-                        modulo=MODULE_ID,
-                        evidencia=f"{src} -> {dst} (HTTP POST)",
-                        patron="cleartext_creds",
-                        interpretacion=(
+                        severity="high",
+                        confidence=Confidence.MEDIUM,
+                        module=MODULE_ID,
+                        evidence=f"{src} -> {dst} (HTTP POST)",
+                        pattern="cleartext_creds",
+                        interpretation=(
                             "Unencrypted Form Authentication / Credential Exposure | "
                             "Form submission payload containing plaintext password fields over unencrypted HTTP | "
                             "Local management consoles, embedded router portals, or development test fixtures"
@@ -156,14 +156,14 @@ def detect_cleartext_creds(packets) -> List[Finding]:
                 if key not in seen:
                     seen.add(key)
                     findings.append(Finding(
-                        titulo=f"FTP credential intercepted ({req_cmd})",
-                        descripcion=f"FTP command {req_cmd} sent in cleartext.",
-                        severidad="critico",
-                        confianza=Confianza.ALTA,
-                        modulo=MODULE_ID,
-                        evidencia=f"{src} -> {dst} ({req_cmd})",
-                        patron="cleartext_creds",
-                        interpretacion=(
+                        title=f"FTP credential intercepted ({req_cmd})",
+                        description=f"FTP command {req_cmd} sent in cleartext.",
+                        severity="critical",
+                        confidence=Confidence.HIGH,
+                        module=MODULE_ID,
+                        evidence=f"{src} -> {dst} ({req_cmd})",
+                        pattern="cleartext_creds",
+                        interpretation=(
                             "Cleartext Credential Transmission (FTP) | "
                             "Plaintext USER/PASS commands sent across unencrypted File Transfer Protocol | "
                             "Legacy network appliances, automated batch file transfer scripts, or lab environments"
@@ -178,14 +178,14 @@ def detect_cleartext_creds(packets) -> List[Finding]:
                 if key not in seen:
                     seen.add(key)
                     findings.append(Finding(
-                        titulo=f"POP3 credential intercepted ({req_cmd})",
-                        descripcion="POP3 authentication sent unencrypted.",
-                        severidad="critico",
-                        confianza=Confianza.ALTA,
-                        modulo=MODULE_ID,
-                        evidencia=f"{src} -> {dst} (POP3)",
-                        patron="cleartext_creds",
-                        interpretacion=(
+                        title=f"POP3 credential intercepted ({req_cmd})",
+                        description="POP3 authentication sent unencrypted.",
+                        severity="critical",
+                        confidence=Confidence.HIGH,
+                        module=MODULE_ID,
+                        evidence=f"{src} -> {dst} (POP3)",
+                        pattern="cleartext_creds",
+                        interpretation=(
                             "Cleartext Credential Transmission (POP3) | "
                             "Plaintext USER/PASS authentication over unencrypted POP3 mail protocol | "
                             "Legacy mail client configurations, local mail test harnesses, or outdated printer/scanner setups"
@@ -241,17 +241,17 @@ def detect_cleartext_creds(packets) -> List[Finding]:
                 seen.add(key)
                 user_display = captured_user or "<unknown>"
                 findings.append(Finding(
-                    titulo="Telnet credential intercepted",
-                    descripcion=(
+                    title="Telnet credential intercepted",
+                    description=(
                         f"Telnet login sequence captured in cleartext: "
                         f"{user_display}:{'***' if captured_pass else '<not captured>'}"
                     ),
-                    severidad="critico",
-                    confianza=Confianza.ALTA,
-                    modulo=MODULE_ID,
-                    evidencia=f"{host_a} <-> {host_b} (Telnet)",
-                    patron="cleartext_creds",
-                    interpretacion=(
+                    severity="critical",
+                    confidence=Confidence.HIGH,
+                    module=MODULE_ID,
+                    evidence=f"{host_a} <-> {host_b} (Telnet)",
+                    pattern="cleartext_creds",
+                    interpretation=(
                         "Cleartext Credential Transmission (Telnet) | "
                         "Plaintext username/password exchanged over unencrypted Telnet session | "
                         "Legacy network device management, embedded systems, or isolated lab environments"
@@ -263,20 +263,20 @@ def detect_cleartext_creds(packets) -> List[Finding]:
 
 def run(packets, config: dict, console: Console) -> List[Finding]:
     findings = []
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     creds = detect_cleartext_creds(packets)
     findings.extend(creds)
 
     if findings:
         for f in findings:
-            console.print(f"  {estilo_severidad(f.severidad)}  {f.titulo}")
-            console.print(f"      [dim]{f.descripcion}[/]")
-            console.print(f"      [dim]-> {f.evidencia}[/]")
+            console.print(f"  {severity_style(f.severity)}  {f.title}")
+            console.print(f"      [dim]{f.description}[/]")
+            console.print(f"      [dim]-> {f.evidence}[/]")
         console.print()
     else:
         console.print("  [bold bright_green][OK][/] [dim]No cleartext credentials detected in standard protocols.[/]")
         console.print()
 
-    console.print(pie_modulo())
+    console.print(module_footer())
     return findings

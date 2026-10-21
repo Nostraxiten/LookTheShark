@@ -14,8 +14,8 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from modules import Finding, Confianza, es_ip_privada, formatear_bytes, safe_get_attr, safe_int
-from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
+from modules import Finding, Confidence, is_private_ip, format_bytes, safe_get_attr, safe_int
+from ui.theme import module_header, module_footer, severity_style
 
 
 MODULE_NUM  = 1
@@ -47,7 +47,7 @@ def _geolocate(ip: str) -> str:
     _init_geoip()
     if _geoip_reader is None:
         return "—"
-    if es_ip_privada(ip):
+    if is_private_ip(ip):
         return "LAN"
     try:
         resp = _geoip_reader.city(ip)
@@ -90,7 +90,7 @@ def get_top_talkers(ip_stats: dict, n: int = 10) -> list:
             "ip": ip,
             "total_bytes": total_bytes,
             "total_pkts": total_pkts,
-            "private": es_ip_privada(ip),
+            "private": is_private_ip(ip),
             "geo": _geolocate(ip),
         })
     ranked.sort(key=lambda x: x["total_bytes"], reverse=True)
@@ -123,7 +123,7 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     """Executes IP/Hosts analysis and displays results."""
     findings = []
 
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     ip_stats = get_unique_ips(packets)
     top_talkers = get_top_talkers(ip_stats, n=15)
@@ -131,40 +131,40 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
 
     # ── Summary ────────────────────────────────────────
     total_ips = len(ip_stats)
-    ips_publicas = [ip for ip in ip_stats if not es_ip_privada(ip)]
-    ips_privadas = [ip for ip in ip_stats if es_ip_privada(ip)]
+    public_ips = [ip for ip in ip_stats if not is_private_ip(ip)]
+    private_ips = [ip for ip in ip_stats if is_private_ip(ip)]
 
     console.print(f"  Unique IPs:      [bold white]{total_ips}[/]")
-    console.print(f"  Private IPs:     [bold white]{len(ips_privadas)}[/]")
-    console.print(f"  Public IPs:      [bold white]{len(ips_publicas)}[/]")
+    console.print(f"  Private IPs:     [bold white]{len(private_ips)}[/]")
+    console.print(f"  Public IPs:      [bold white]{len(public_ips)}[/]")
     console.print()
 
     # ── Top Talkers ────────────────────────────────────
     if top_talkers:
-        tabla = Table(
+        table = Table(
             show_header=True,
-            header_style="tabla_header",
+            header_style="table_header",
             box=box.SIMPLE_HEAVY,
-            border_style="tabla_border",
+            border_style="table_border",
             padding=(0, 1),
             title="Top Talkers",
             title_style="bold white",
         )
-        tabla.add_column("IP", style="bold cyan", width=18)
-        tabla.add_column("Type", width=8)
-        tabla.add_column("Packets", justify="right", width=10)
-        tabla.add_column("Bytes", justify="right", width=12)
-        tabla.add_column("Geo", style="dim", width=25)
+        table.add_column("IP", style="bold cyan", width=18)
+        table.add_column("Type", width=8)
+        table.add_column("Packets", justify="right", width=10)
+        table.add_column("Bytes", justify="right", width=12)
+        table.add_column("Geo", style="dim", width=25)
 
         for t in top_talkers[:10]:
             tipo = "[dim]LAN[/]" if t["private"] else "[bold white]WAN[/]"
-            tabla.add_row(
+            table.add_row(
                 t["ip"], tipo,
                 f"{t['total_pkts']:,}",
-                formatear_bytes(t["total_bytes"]),
+                format_bytes(t["total_bytes"]),
                 t["geo"],
             )
-        console.print(tabla)
+        console.print(table)
         console.print()
 
     # ── Top Conversations ──────────────────────────────
@@ -173,16 +173,16 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
         for c in conversations[:8]:
             console.print(
                 f"    {c['pair']}  [dim]({c['pkts']:,} pkts, "
-                f"{formatear_bytes(c['bytes'])})[/]"
+                f"{format_bytes(c['bytes'])})[/]"
             )
         console.print()
 
     # ── Whitelist check ────────────────────────────────
     whitelist = set(config.get("whitelist_ips", []))
     if whitelist:
-        ips_no_whitelist = [ip for ip in ips_publicas if ip not in whitelist]
-        console.print(f"  [dim]Public IPs outside whitelist: {len(ips_no_whitelist)}[/]")
+        public_ips_outside = [ip for ip in public_ips if ip not in whitelist]
+        console.print(f"  [dim]Public IPs outside whitelist: {len(public_ips_outside)}[/]")
 
-    console.print(pie_modulo())
+    console.print(module_footer())
 
     return findings

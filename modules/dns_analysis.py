@@ -13,8 +13,8 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from modules import Finding, Confianza, safe_get_attr
-from ui.theme import cabecera_modulo, pie_modulo, estilo_severidad
+from modules import Finding, Confidence, safe_get_attr
+from ui.theme import module_header, module_footer, severity_style
 
 
 MODULE_NUM  = 3
@@ -130,19 +130,19 @@ def detect_dga(queries: list) -> List[Finding]:
                 continue
 
             findings.append(Finding(
-                titulo=f"High entropy domain: {domain}",
-                descripcion=(
+                title=f"High entropy domain: {domain}",
+                description=(
                     f"Shannon entropy: {ent:.2f} (threshold: {ENTROPY_THRESHOLD}). "
                     f"Could indicate an algorithmically generated domain (DGA). "
                     f"Review manually."
                 ),
-                severidad="medio",
-                confianza=Confianza.MEDIA,
-                modulo=MODULE_ID,
-                evidencia=f"Query from {q['src']} -> {q['dst']}",
-                patron="dga",
+                severity="medium",
+                confidence=Confidence.MEDIUM,
+                module=MODULE_ID,
+                evidence=f"Query from {q['src']} -> {q['dst']}",
+                pattern="dga",
                 timestamp=q.get("timestamp", ""),
-                interpretacion=(
+                interpretation=(
                     "Domain Generation Algorithms (DGA) / C2 Communication | "
                     "High Shannon entropy (>3.8) in query domain label | "
                     "Legitimate content delivery networks (CDNs), cloud load balancers, anti-spam lookups, or UUID-based API endpoints"
@@ -179,19 +179,19 @@ def detect_tunneling(
             if len(part) > TUNNEL_LABEL_LEN and domain not in checked_long:
                 checked_long.add(domain)
                 findings.append(Finding(
-                    titulo=f"Unusually long subdomain: {domain[:60]}...",
-                    descripcion=(
+                    title=f"Unusually long subdomain: {domain[:60]}...",
+                    description=(
                         f"Label with {len(part)} characters detected. "
                         f"Long subdomains are typical of DNS tunneling (encoded payloads). "
                         f"Review manually."
                     ),
-                    severidad="alto",
-                    confianza=Confianza.MEDIA,
-                    modulo=MODULE_ID,
-                    evidencia=f"Query from {q['src']}",
-                    patron="dns_tunneling",
+                    severity="high",
+                    confidence=Confidence.MEDIUM,
+                    module=MODULE_ID,
+                    evidence=f"Query from {q['src']}",
+                    pattern="dns_tunneling",
                     timestamp=q.get("timestamp", ""),
-                    interpretacion=(
+                    interpretation=(
                         "DNS Tunneling / Data Exfiltration | "
                         "Unusually long DNS label (>50 chars) containing encoded data payload | "
                         "Legitimate antivirus update queries, DKIM/SPF DNS records, or cryptographic handshake identifiers"
@@ -226,19 +226,19 @@ def detect_tunneling(
                 qps = len(timestamps) / span
                 if qps >= threshold:
                     findings.append(Finding(
-                        titulo=f"High DNS query rate towards {dst}",
-                        descripcion=(
+                        title=f"High DNS query rate towards {dst}",
+                        description=(
                             f"{qps:.1f} queries/second sustained over {span:.0f}s "
                             f"(threshold: {threshold} qps, min window: {min_span}s). "
                             f"Could indicate DNS tunneling or high-rate exfiltration. "
                             f"Review manually."
                         ),
-                        severidad="alto",
-                        confianza=Confianza.MEDIA,
-                        modulo=MODULE_ID,
-                        evidencia=f"{len(qs)} queries in {span:.0f}s",
-                        patron="dns_tunneling",
-                        interpretacion=(
+                        severity="high",
+                        confidence=Confidence.MEDIUM,
+                        module=MODULE_ID,
+                        evidence=f"{len(qs)} queries in {span:.0f}s",
+                        pattern="dns_tunneling",
+                        interpretation=(
                             "DNS Tunneling / Exfiltration Rate Anomaly | "
                             f"DNS query rate exceeding {threshold} queries/second to a single resolver "
                             f"sustained over at least {min_span}s | "
@@ -253,13 +253,13 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     """Executes DNS analysis."""
     findings = []
 
-    console.print(cabecera_modulo(MODULE_NUM, MODULE_NAME))
+    console.print(module_header(MODULE_NUM, MODULE_NAME))
 
     queries = extract_dns_queries(packets)
 
     if not queries:
         console.print("  [dim]No DNS packets found in capture.[/]")
-        console.print(pie_modulo())
+        console.print(module_footer())
         return findings
 
     # ── Summary ────────────────────────────────────────
@@ -275,28 +275,28 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     # ── Most queried domains ───────────────────────────
     domain_counts = Counter(q["name"].lower().rstrip(".") for q in query_only)
 
-    tabla = Table(
+    table = Table(
         show_header=True,
-        header_style="tabla_header",
+        header_style="table_header",
         box=box.SIMPLE_HEAVY,
-        border_style="tabla_border",
+        border_style="table_border",
         padding=(0, 1),
         title="Most Queried Domains",
         title_style="bold white",
     )
-    tabla.add_column("Domain", style="bold cyan", width=40)
-    tabla.add_column("Queries", justify="right", width=10)
-    tabla.add_column("Entropy", justify="right", width=10)
+    table.add_column("Domain", style="bold cyan", width=40)
+    table.add_column("Queries", justify="right", width=10)
+    table.add_column("Entropy", justify="right", width=10)
 
     for domain, count in domain_counts.most_common(15):
         ent = entropy_score(domain)
         ent_style = "bold yellow" if ent >= ENTROPY_THRESHOLD else "dim"
-        tabla.add_row(
+        table.add_row(
             domain[:40],
             f"{count:,}",
             f"[{ent_style}]{ent:.2f}[/]",
         )
-    console.print(tabla)
+    console.print(table)
     console.print()
 
     # ── Detection ──────────────────────────────────────
@@ -312,14 +312,14 @@ def run(packets, config: dict, console: Console) -> List[Finding]:
     if findings:
         console.print()
         for f in findings:
-            console.print(f"  {estilo_severidad(f.severidad)}  {f.titulo}")
-            console.print(f"      [dim]{f.descripcion}[/]")
-            console.print(f"      [dim]-> {f.evidencia}[/]")
+            console.print(f"  {severity_style(f.severity)}  {f.title}")
+            console.print(f"      [dim]{f.description}[/]")
+            console.print(f"      [dim]-> {f.evidence}[/]")
             console.print(f"      [dim]Review manually.[/]")
         console.print()
     else:
         console.print("  [bold bright_green][OK][/] [dim]No DNS anomalies detected.[/]")
         console.print()
 
-    console.print(pie_modulo())
+    console.print(module_footer())
     return findings

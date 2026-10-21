@@ -1,8 +1,8 @@
 # LookingTheShark — Network Forensics Report
 
-**Capture Analysed:** `{{ capture.nombre }}`  
-**Packets:** {{ capture.paquetes }}  
-**Duration:** {{ capture.duracion }}  
+**Capture Analysed:** `{{ capture.name }}`  
+**Packets:** {{ capture.packets }}  
+**Duration:** {{ capture.duration }}  
 
 ---
 
@@ -10,30 +10,30 @@
 
 Network capture analysis revealed **{{ findings|length }}** security finding(s). Manual review of events marked Critical or High is required to confirm or rule out incidents.
 
-{% set criticos = findings|selectattr('severidad', 'equalto', 'critico')|list %}
-{% set altos = findings|selectattr('severidad', 'equalto', 'alto')|list %}
-{% set medios = findings|selectattr('severidad', 'equalto', 'medio')|list %}
-{% set bajos = findings|selectattr('severidad', 'equalto', 'bajo')|list %}
+{% set critical = findings|selectattr('severity', 'equalto', 'critical')|list %}
+{% set high = findings|selectattr('severity', 'equalto', 'high')|list %}
+{% set medium = findings|selectattr('severity', 'equalto', 'medium')|list %}
+{% set low = findings|selectattr('severity', 'equalto', 'low')|list %}
 
-- **CRITICAL**: {{ criticos|length }}
-- **HIGH**: {{ altos|length }}
-- **MEDIUM**: {{ medios|length }}
-- **LOW/INFO**: {{ bajos|length }}
+- **CRITICAL**: {{ critical|length }}
+- **HIGH**: {{ high|length }}
+- **MEDIUM**: {{ medium|length }}
+- **LOW/INFO**: {{ low|length }}
 
 ---
 
 ## Findings Detail
 
 {% for f in findings %}
-### [{{ f.severidad|upper }}] {{ f.titulo }}
+### [{{ f.severity|upper }}] {{ f.title }}
 
-- **Description**: {{ f.descripcion }}
-- **Detecting Module**: `{{ f.modulo }}`
-- **Evidence**: `{{ f.evidencia }}`
+- **Description**: {{ f.description }}
+- **Detecting Module**: `{{ f.module }}`
+- **Evidence**: `{{ f.evidence }}`
 {% if f.mitre_name %}
 - **MITRE ATT&CK Technique**: {{ f.mitre_name }}
 {% endif %}
-- **Analyser Confidence**: {{ f.confianza|capitalize }}
+- **Analyser Confidence**: {{ f.confidence|capitalize }}
 
 {% else %}
 *No security anomalies found in this capture.*
