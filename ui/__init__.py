@@ -1,1 +1,1 @@
-# UI — Interfaz visual de LookingTheShark
+"""UI — Visual interface components for LookingTheShark."""

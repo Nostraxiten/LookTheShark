@@ -1,9 +1,9 @@
 """
-modules/mitre_mapping.py — §3.12 Módulo MITRE ATT&CK.
+modules/mitre_mapping.py — §3.12 MITRE ATT&CK Module.
 
-Mapea los hallazgos de todos los módulos anteriores a técnicas del 
-framework MITRE ATT&CK usando data/mitre_map.json.
-Este módulo no genera findings nuevos, muta los existentes.
+Maps findings from all previous modules to MITRE ATT&CK
+framework techniques using data/mitre_map.json.
+This module does not generate new findings; it enriches existing ones.
 """
 
 import os

@@ -135,7 +135,7 @@ def detect_uncommon_protocols(packets, baseline_profile: dict = None) -> List[Fi
     """Detects deprecated or insecure protocols.
 
     A finding is only emitted when BOTH conditions are met:
-      1. Traffic targets a port in PUERTOS_DEPRECADOS.
+      1. Traffic targets a port in DEPRECATED_PORTS.
       2. The pyshark dissector actually identified the corresponding protocol
          layer (i.e. _confirmed_by_dissector() returns True).
 
