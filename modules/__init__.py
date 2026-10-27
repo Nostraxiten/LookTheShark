@@ -10,6 +10,25 @@ Defines:
 from dataclasses import dataclass, field
 from typing import Optional, List
 from datetime import datetime
+import asyncio
+
+# Python 3.14+ compatibility:
+# In Python 3.14, asyncio child watchers (set_child_watcher, SafeChildWatcher, etc.)
+# were removed. Current versions of pyshark (<=0.6) attempt to call
+# asyncio.set_child_watcher(asyncio.SafeChildWatcher()) on POSIX systems (Linux/Kali).
+# This shim provides no-op implementations so pyshark initializes cleanly.
+if not hasattr(asyncio, "set_child_watcher"):
+    class _CompatibilityChildWatcher:
+        def attach_loop(self, loop):
+            pass
+        def close(self):
+            pass
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: None
+
+    asyncio.set_child_watcher = lambda watcher: None
+    asyncio.get_child_watcher = lambda: _CompatibilityChildWatcher()
+    asyncio.SafeChildWatcher = _CompatibilityChildWatcher
 
 
 # ──────────────────────────────────────────────────────

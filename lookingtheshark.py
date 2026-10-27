@@ -14,6 +14,24 @@ import json
 import asyncio
 from typing import List, Optional
 
+# Python 3.14+ compatibility:
+# In Python 3.14, asyncio child watchers (set_child_watcher, SafeChildWatcher, etc.)
+# were removed. Current versions of pyshark (<=0.6) attempt to call
+# asyncio.set_child_watcher(asyncio.SafeChildWatcher()) on POSIX systems (Linux/Kali).
+# This shim provides no-op implementations so pyshark initializes cleanly.
+if not hasattr(asyncio, "set_child_watcher"):
+    class _CompatibilityChildWatcher:
+        def attach_loop(self, loop):
+            pass
+        def close(self):
+            pass
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: None
+
+    asyncio.set_child_watcher = lambda watcher: None
+    asyncio.get_child_watcher = lambda: _CompatibilityChildWatcher()
+    asyncio.SafeChildWatcher = _CompatibilityChildWatcher
+
 try:
     import pyshark
 except ImportError:
@@ -71,9 +89,13 @@ def load_capture(filepath: str, console: Console, progress=None, task_id=None) -
         console.print(f"  [dim]Parsing capture {filepath}... (this may take a while)[/]")
     try:
         try:
-            asyncio.get_event_loop()
+            loop = asyncio.get_event_loop_policy().get_event_loop()
         except RuntimeError:
-            asyncio.set_event_loop(asyncio.new_event_loop())
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
         # keep_packets=True to iterate multiple times
         cap = pyshark.FileCapture(filepath, keep_packets=True)
