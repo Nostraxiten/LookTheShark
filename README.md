@@ -75,7 +75,7 @@ graph TD
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/nostraxiten/LookTheShark
+git clone https://github.com/nostraxiten/LookTheShark.git
 cd LookTheShark
 ```
 
