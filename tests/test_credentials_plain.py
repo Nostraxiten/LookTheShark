@@ -203,17 +203,15 @@ class TestTelnetCredentialExtraction:
         assert telnet_findings, "No Telnet finding produced."
         assert telnet_findings[0].severity == "critical"
 
-    def test_telnet_password_is_masked(self):
-        """The actual password must NOT appear in the finding description."""
+    def test_telnet_password_is_unmasked(self):
+        """The actual password must appear unmasked in the finding description."""
         pkts = _make_telnet_sequence(username="root", password="s3cr3tP@ss")
         findings = detect_cleartext_creds(pkts)
         telnet_findings = [f for f in findings if "Telnet" in f.title]
         assert telnet_findings, "No Telnet finding produced."
         desc = telnet_findings[0].description
-        assert "s3cr3tP@ss" not in desc, (
-            f"Password was exposed in finding description: {desc}"
-        )
-        assert "***" in desc, f"Expected '***' mask in description but got: {desc}"
+        assert "s3cr3tP@ss" in desc, f"Password was not exposed in finding description: {desc}"
+        assert "***" not in desc, f"Found unexpected '***' mask in description: {desc}"
 
     def test_telnet_username_captured(self):
         """The username should appear (unmasked) in the finding description."""
@@ -237,3 +235,39 @@ class TestTelnetCredentialExtraction:
         assert telnet_findings == [], (
             f"False positive on non-credential Telnet data: {[f.title for f in telnet_findings]}"
         )
+
+
+class TestHttpBasicAuthAndEmailExtraction:
+    """Verify HTTP Basic Auth decoding and email extraction."""
+
+    def test_http_basic_auth_unmasked(self):
+        import base64
+        pkt = _make_base_pkt("10.10.20.15", "10.10.20.80")
+        raw_cred = "lab_user:SuperSecret123"
+        b64 = base64.b64encode(raw_cred.encode()).decode()
+        pkt.http.authorization = f"Basic {b64}"
+        type(pkt).http = PropertyMock(return_value=pkt.http)
+
+        findings = detect_cleartext_creds([pkt])
+        basic_findings = [f for f in findings if "Basic Auth" in f.title]
+        assert len(basic_findings) == 1
+        desc = basic_findings[0].description
+        assert "lab_user" in desc
+        assert "SuperSecret123" in desc
+        assert "***" not in desc
+
+    def test_http_post_credentials_extracted(self):
+        body = "username=admin&password=Password999&email=admin@corp.net"
+        pkt = _make_http_post_pkt(body)
+        findings = detect_cleartext_creds([pkt])
+        post_findings = [f for f in findings if "HTTP POST" in f.title]
+        assert len(post_findings) >= 1
+        desc = post_findings[0].description
+        assert "admin" in desc
+        assert "Password999" in desc
+
+        # Email finding also produced
+        email_findings = [f for f in findings if "email" in f.title.lower()]
+        assert len(email_findings) >= 1
+        assert "admin@corp.net" in email_findings[0].description
+

@@ -88,5 +88,11 @@
     "name": "Data Encoding",
     "tactic": "Command and Control",
     "description": "Adversaries may encode data to make network traffic appear normal."
+  },
+  "email_exposure": {
+    "id": "T1040",
+    "name": "Network Sniffing: Credential & Data Exposure",
+    "tactic": "Collection, Discovery",
+    "description": "Adversaries may sniff network traffic to collect sensitive data transmitted in cleartext, such as email addresses and identities."
   }
 }
